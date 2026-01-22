@@ -1,0 +1,120 @@
+[
+  {
+    "name": "Pectoralis Major",
+    "type": "muscle",
+    "category": "upper_body",
+    "description": "The pectoralis major is a large, fan-shaped muscle that makes up the bulk of the chest wall. It consists of two heads: the clavicular head (upper chest) and the sternal head (lower/mid chest).",
+    "function": "Primary function is horizontal adduction and internal rotation of the shoulder joint. It's heavily involved in pushing movements.",
+    "importance": "Essential for pushing strength, protecting the ribcage, and contributing to overall upper body aesthetics and functional strength.",
+    "movement": "During a push-up or bench press, the pectoralis major contracts to bring your arms from an extended position toward your body's midline. The upper fibers activate more during incline pressing, while lower fibers engage more during decline movements.",
+    "modelLayer": "muscles_bones",
+    "position3D": {"x": 0, "y": 0.3, "z": 0.1},
+    "recoveryTime": 48
+  },
+  {
+    "name": "Latissimus Dorsi",
+    "type": "muscle",
+    "category": "upper_body",
+    "description": "The latissimus dorsi (lats) is the widest muscle in the human body, spanning from the lower back to the upper arm. It creates the V-taper appearance of the back.",
+    "function": "Responsible for shoulder extension, adduction, and internal rotation. Primary mover in pulling exercises.",
+    "importance": "Critical for pulling strength, spinal stability, and protecting the lower back during daily activities and athletic movements.",
+    "movement": "When performing a pull-up, the lats contract to pull your arms down from overhead toward your sides. In rowing movements, they pull your arms backward and toward your body.",
+    "modelLayer": "muscles_bones",
+    "position3D": {"x": 0, "y": 0, "z": -0.1},
+    "recoveryTime": 48
+  },
+  {
+    "name": "Quadriceps",
+    "type": "muscle",
+    "category": "lower_body",
+    "description": "The quadriceps femoris consists of four muscles on the front of the thigh: rectus femoris, vastus lateralis, vastus medialis, and vastus intermedius.",
+    "function": "Primary knee extensors and hip flexors (rectus femoris). Essential for standing, walking, running, and jumping.",
+    "importance": "The largest muscle group in the body, critical for locomotion, athletic performance, and maintaining independence in daily life. Weak quads increase injury risk, especially to the knees.",
+    "movement": "During a squat, the quads contract eccentrically (lengthening under tension) as you descend, controlling the movement. They contract concentrically (shortening) as you stand up, extending the knee joint against resistance.",
+    "modelLayer": "muscles_bones",
+    "position3D": {"x": 0.1, "y": -0.5, "z": 0.1},
+    "recoveryTime": 72
+  },
+  {
+    "name": "Hamstrings",
+    "type": "muscle",
+    "category": "lower_body",
+    "description": "The hamstrings consist of three muscles on the back of the thigh: biceps femoris, semitendinosus, and semimembranosus.",
+    "function": "Primary knee flexors and hip extensors. Work opposite to the quadriceps. Critical for running, jumping, and deceleration.",
+    "importance": "Essential for posterior chain strength, injury prevention (especially ACL), and athletic performance. Weak hamstrings relative to quads significantly increase injury risk.",
+    "movement": "During a Romanian deadlift, hamstrings lengthen eccentrically as you hinge at the hips, then contract concentrically to return to standing. In running, they decelerate leg swing and contribute to propulsion.",
+    "modelLayer": "muscles_bones",
+    "position3D": {"x": 0.1, "y": -0.5, "z": -0.1},
+    "recoveryTime": 72
+  },
+  {
+    "name": "Deltoids",
+    "type": "muscle",
+    "category": "upper_body",
+    "description": "The deltoid muscle has three heads: anterior (front), medial (side), and posterior (rear). Together they form the rounded contour of the shoulder.",
+    "function": "Responsible for shoulder abduction (raising arm to side), flexion (raising arm forward), and extension (pulling arm backward). Each head has distinct functions.",
+    "importance": "Critical for shoulder mobility and stability. Well-developed deltoids protect the shoulder joint and enable overhead movements essential for daily activities and sports.",
+    "movement": "Anterior deltoid: activates when pushing or raising arms forward. Medial deltoid: prime mover in lateral raises. Posterior deltoid: activates during pulling and when moving arms backward.",
+    "modelLayer": "muscles_bones",
+    "position3D": {"x": 0.2, "y": 0.2, "z": 0},
+    "recoveryTime": 48
+  },
+  {
+    "name": "Gluteus Maximus",
+    "type": "muscle",
+    "category": "lower_body",
+    "description": "The gluteus maximus is the largest and most superficial of the three gluteal muscles, forming the bulk of the buttocks.",
+    "function": "Primary hip extensor, external rotator, and abductor. Essential for upright posture, climbing, and explosive lower body movements.",
+    "importance": "The most powerful muscle in the human body. Critical for running speed, jumping ability, and protecting the lower back by maintaining pelvic stability.",
+    "movement": "Contracts powerfully during hip extension movements like deadlifts, squats, and sprinting. Generates force to propel the body forward and upward.",
+    "modelLayer": "muscles_bones",
+    "position3D": {"x": 0.1, "y": -0.3, "z": -0.15},
+    "recoveryTime": 72
+  },
+  {
+    "name": "Heart",
+    "type": "organ",
+    "category": "cardiovascular",
+    "description": "The heart is a muscular organ roughly the size of your fist, consisting of four chambers: two atria (upper) and two ventricles (lower).",
+    "function": "Pumps oxygenated blood from the lungs to the body and returns deoxygenated blood back to the lungs. Beats approximately 100,000 times per day.",
+    "importance": "Absolutely vital for life. Delivers oxygen and nutrients to all tissues and removes waste products. Cardiovascular fitness directly impacts heart health and longevity.",
+    "movement": "The heart muscle (myocardium) contracts rhythmically in two phases: systole (contraction to pump blood out) and diastole (relaxation to fill with blood). Aerobic exercise strengthens the heart muscle, increasing stroke volume and efficiency.",
+    "modelLayer": "skeleton_organs",
+    "position3D": {"x": 0, "y": 0.2, "z": 0.05}
+  },
+  {
+    "name": "Lungs",
+    "type": "organ",
+    "category": "cardiovascular",
+    "description": "Pair of spongy, air-filled organs located on either side of the chest. Contain approximately 300 million alveoli (air sacs) for gas exchange.",
+    "function": "Facilitate gas exchange - oxygen from inhaled air enters the bloodstream while carbon dioxide is expelled. Provide oxygen for cellular respiration in all body tissues.",
+    "importance": "Essential for life and athletic performance. Lung capacity affects endurance, recovery, and overall health. Exercise increases respiratory efficiency.",
+    "movement": "During inhalation, the diaphragm contracts and flattens, expanding the chest cavity. Air rushes in to fill the increased space. Exhalation is passive relaxation in normal breathing, but can be forced during exercise using intercostal and abdominal muscles.",
+    "modelLayer": "skeleton_organs",
+    "position3D": {"x": 0, "y": 0.25, "z": 0}
+  },
+  {
+    "name": "Biceps Brachii",
+    "type": "muscle",
+    "category": "upper_body",
+    "description": "Two-headed muscle on the front of the upper arm, consisting of a long head and short head.",
+    "function": "Primary elbow flexor and forearm supinator (rotating palm upward). Also assists in shoulder flexion.",
+    "importance": "Essential for daily pulling and lifting tasks. While smaller than other muscles, highly visible and important for functional arm strength.",
+    "movement": "Contracts during any pulling motion toward the body. Fully engaged when both flexing elbow and supinating forearm, as in a dumbbell curl with palm rotation.",
+    "modelLayer": "muscles_bones",
+    "position3D": {"x": 0.15, "y": 0.1, "z": 0.05},
+    "recoveryTime": 36
+  },
+  {
+    "name": "Triceps Brachii",
+    "type": "muscle",
+    "category": "upper_body",
+    "description": "Three-headed muscle on the back of the upper arm: long head, lateral head, and medial head.",
+    "function": "Primary elbow extensor. The long head also assists in shoulder extension and adduction.",
+    "importance": "Makes up approximately 2/3 of upper arm mass. Critical for all pushing movements and overhead activities.",
+    "movement": "Contracts to straighten the elbow against resistance. Heavily involved in bench press lockout, overhead press, and dips. Long head is emphasized when shoulder is flexed (overhead movements).",
+    "modelLayer": "muscles_bones",
+    "position3D": {"x": 0.15, "y": 0.1, "z": -0.05},
+    "recoveryTime": 36
+  }
+]
