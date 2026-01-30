@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useCallback } from 'react';
 import {
   TouchableOpacity,
   TouchableOpacityProps,
@@ -12,6 +12,7 @@ import Animated, {
   withDelay,
   withTiming,
 } from 'react-native-reanimated';
+import { useFocusEffect } from '@react-navigation/native';
 import { useHaptics } from './useHaptics';
 import { SPRING_CONFIG, COLORS, SHADOWS, ANIMATION_DURATION, EASING } from './config';
 
@@ -37,21 +38,34 @@ export default function AnimatedCard({
   ...props
 }: AnimatedCardProps) {
   const scale = useSharedValue(1);
-  const opacity = useSharedValue(0);
-  const translateY = useSharedValue(20);
+  const opacity = useSharedValue(1); // Start visible to prevent flash
+  const translateY = useSharedValue(0);
   const { trigger } = useHaptics();
 
-  // Entry animation
-  React.useEffect(() => {
-    opacity.value = withDelay(
-      delay,
-      withTiming(1, { duration: ANIMATION_DURATION.normal, easing: EASING.easeOut })
-    );
-    translateY.value = withDelay(
-      delay,
-      withSpring(0, SPRING_CONFIG.gentle)
-    );
-  }, []);
+  // Entry animation - re-runs when screen comes into focus
+  useFocusEffect(
+    useCallback(() => {
+      // Reset to initial state
+      opacity.value = 0;
+      translateY.value = 20;
+
+      // Animate in
+      opacity.value = withDelay(
+        delay,
+        withTiming(1, { duration: ANIMATION_DURATION.normal, easing: EASING.easeOut })
+      );
+      translateY.value = withDelay(
+        delay,
+        withSpring(0, SPRING_CONFIG.gentle)
+      );
+
+      return () => {
+        // Ensure card is visible when leaving screen
+        opacity.value = 1;
+        translateY.value = 0;
+      };
+    }, [delay])
+  );
 
   const handlePressIn = () => {
     if (pressable) {

@@ -9,6 +9,7 @@ import {
   getStreak,
   getWeightTrend
 } from '../services/nutritionSuggestions';
+import { recognizeFoodFromImage } from '../services/foodRecognition';
 
 const router = Router();
 
@@ -75,10 +76,20 @@ router.post('/log', authenticateToken, async (req: AuthRequest, res: Response) =
         servings,
         mealType: mealType || 'snack',
         date: date ? new Date(date) : new Date(),
+        // Macros
         totalCalories: food.calories * servings,
         totalProtein: food.protein * servings,
         totalCarbs: food.carbs * servings,
         totalFat: food.fat * servings,
+        totalFiber: (food.fiber || 0) * servings,
+        // Electrolytes
+        totalSodium: (food.sodium || 0) * servings,
+        totalPotassium: (food.potassium || 0) * servings,
+        // Macrominerals
+        totalCalcium: (food.calcium || 0) * servings,
+        totalMagnesium: (food.magnesium || 0) * servings,
+        totalPhosphorus: (food.phosphorus || 0) * servings,
+        totalIron: (food.iron || 0) * servings,
       },
       include: {
         food: true
@@ -153,7 +164,16 @@ router.get('/logs/today', authenticateToken, async (req: AuthRequest, res: Respo
       calories: logs.reduce((sum, log) => sum + (log.totalCalories || 0), 0),
       protein: logs.reduce((sum, log) => sum + (log.totalProtein || 0), 0),
       carbs: logs.reduce((sum, log) => sum + (log.totalCarbs || 0), 0),
-      fat: logs.reduce((sum, log) => sum + (log.totalFat || 0), 0)
+      fat: logs.reduce((sum, log) => sum + (log.totalFat || 0), 0),
+      fiber: logs.reduce((sum, log) => sum + (log.totalFiber || 0), 0),
+      // Electrolytes
+      sodium: logs.reduce((sum, log) => sum + (log.totalSodium || 0), 0),
+      potassium: logs.reduce((sum, log) => sum + (log.totalPotassium || 0), 0),
+      // Macrominerals
+      calcium: logs.reduce((sum, log) => sum + (log.totalCalcium || 0), 0),
+      magnesium: logs.reduce((sum, log) => sum + (log.totalMagnesium || 0), 0),
+      phosphorus: logs.reduce((sum, log) => sum + (log.totalPhosphorus || 0), 0),
+      iron: logs.reduce((sum, log) => sum + (log.totalIron || 0), 0),
     };
 
     // Get user's targets for remaining calculation
@@ -243,10 +263,20 @@ router.put('/logs/:id', authenticateToken, async (req: AuthRequest, res: Respons
     const updateData: any = {};
     if (servings !== undefined) {
       updateData.servings = servings;
+      // Macros
       updateData.totalCalories = existingLog.food.calories * servings;
       updateData.totalProtein = existingLog.food.protein * servings;
       updateData.totalCarbs = existingLog.food.carbs * servings;
       updateData.totalFat = existingLog.food.fat * servings;
+      updateData.totalFiber = (existingLog.food.fiber || 0) * servings;
+      // Electrolytes
+      updateData.totalSodium = (existingLog.food.sodium || 0) * servings;
+      updateData.totalPotassium = (existingLog.food.potassium || 0) * servings;
+      // Macrominerals
+      updateData.totalCalcium = (existingLog.food.calcium || 0) * servings;
+      updateData.totalMagnesium = (existingLog.food.magnesium || 0) * servings;
+      updateData.totalPhosphorus = (existingLog.food.phosphorus || 0) * servings;
+      updateData.totalIron = (existingLog.food.iron || 0) * servings;
     }
     if (mealType) {
       updateData.mealType = mealType;
@@ -521,6 +551,92 @@ router.get('/foods', async (req, res: Response) => {
   }
 });
 
+// POST /api/nutrition/foods - Create a new food entry (for scanned/custom foods)
+router.post('/foods', authenticateToken, async (req: AuthRequest, res: Response) => {
+  try {
+    const {
+      name,
+      brand,
+      category,
+      servingSize,
+      servingUnit,
+      calories,
+      protein,
+      carbs,
+      fat,
+      fiber,
+      sugar,
+      // Micronutrients
+      sodium,
+      potassium,
+      calcium,
+      magnesium,
+      phosphorus,
+      iron,
+      zinc,
+      vitaminA,
+      vitaminC,
+      vitaminD,
+      vitaminE,
+      vitaminK,
+      vitaminB1,
+      vitaminB2,
+      vitaminB3,
+      vitaminB6,
+      vitaminB12,
+      folate,
+      barcode,
+    } = req.body;
+
+    if (!name || calories === undefined || protein === undefined || carbs === undefined || fat === undefined) {
+      return res.status(400).json({
+        error: 'Name, calories, protein, carbs, and fat are required'
+      });
+    }
+
+    // Validate nutrition values are reasonable
+    if (calories < 0 || calories > 10000 || protein < 0 || protein > 500 ||
+        carbs < 0 || carbs > 500 || fat < 0 || fat > 500) {
+      return res.status(400).json({
+        error: 'Nutrition values appear unrealistic. Please verify the data.'
+      });
+    }
+
+    const food = await prisma.food.create({
+      data: {
+        name,
+        brand: brand || null,
+        category: category || 'custom',
+        servingSize: servingSize || 100,
+        servingUnit: servingUnit || 'g',
+        calories,
+        protein,
+        carbs,
+        fat,
+        fiber: fiber || null,
+        sugar: sugar || null,
+        // Electrolytes & Macrominerals
+        sodium: sodium || null,
+        potassium: potassium || null,
+        calcium: calcium || null,
+        iron: iron || null,
+        // Vitamins
+        vitaminA: vitaminA || null,
+        vitaminC: vitaminC || null,
+        vitaminD: vitaminD || null,
+      }
+    });
+
+    res.status(201).json({
+      message: 'Food created successfully',
+      food
+    });
+  } catch (error) {
+    console.error('Create food error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 // POST /api/nutrition/presets - Create a meal preset
 router.post('/presets', authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
@@ -615,6 +731,32 @@ router.delete('/presets/:id', authenticateToken, async (req: AuthRequest, res: R
   }
 });
 
+// POST /api/nutrition/scan-food - Scan food image using AI
+router.post('/scan-food', authenticateToken, async (req: AuthRequest, res: Response) => {
+  try {
+    const { image, mimeType } = req.body;
+
+    if (!image) {
+      return res.status(400).json({
+        error: 'Image data is required (base64 encoded)'
+      });
+    }
+
+    // Remove data URL prefix if present
+    let imageBase64 = image;
+    if (image.includes('base64,')) {
+      imageBase64 = image.split('base64,')[1];
+    }
+
+    const result = await recognizeFoodFromImage(imageBase64, mimeType || 'image/jpeg');
+
+    res.status(200).json(result);
+  } catch (error) {
+    console.error('Food scan error:', error);
+    res.status(500).json({ error: 'Failed to analyze food image' });
+  }
+});
+
 // POST /api/nutrition/presets/:id/log - Log all items from a preset
 router.post('/presets/:id/log', authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
@@ -647,10 +789,20 @@ router.post('/presets/:id/log', authenticateToken, async (req: AuthRequest, res:
             servings: item.servings,
             mealType: mealType || 'snack',
             date: logDate,
+            // Macros
             totalCalories: item.food.calories * item.servings,
             totalProtein: item.food.protein * item.servings,
             totalCarbs: item.food.carbs * item.servings,
-            totalFat: item.food.fat * item.servings
+            totalFat: item.food.fat * item.servings,
+            totalFiber: (item.food.fiber || 0) * item.servings,
+            // Electrolytes
+            totalSodium: (item.food.sodium || 0) * item.servings,
+            totalPotassium: (item.food.potassium || 0) * item.servings,
+            // Macrominerals
+            totalCalcium: (item.food.calcium || 0) * item.servings,
+            totalMagnesium: (item.food.magnesium || 0) * item.servings,
+            totalPhosphorus: (item.food.phosphorus || 0) * item.servings,
+            totalIron: (item.food.iron || 0) * item.servings,
           },
           include: { food: true }
         })

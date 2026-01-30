@@ -103,7 +103,7 @@ ${prompt}`
       return getFallbackRecommendation(userContext);
     }
 
-    const data = await response.json();
+    const data: any = await response.json();
     const textResponse = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
 
     // Parse JSON from response (handle potential markdown code blocks)

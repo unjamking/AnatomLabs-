@@ -200,16 +200,30 @@ export default function NutritionScreen() {
 
   return (
     <View style={styles.container}>
-      {/* Header with Advanced Tracking Button */}
+      {/* Header with Scan and Advanced Buttons */}
       <View style={styles.headerBar}>
         <Text style={styles.headerTitle}>Nutrition</Text>
-        <TouchableOpacity
-          style={styles.advancedButton}
-          onPress={() => navigation.navigate('NutritionTracking')}
-        >
-          <Ionicons name="analytics" size={18} color="#e74c3c" />
-          <Text style={styles.advancedButtonText}>Advanced</Text>
-        </TouchableOpacity>
+        <View style={styles.headerButtons}>
+          <TouchableOpacity
+            style={styles.scanButton}
+            onPress={() => navigation.navigate('FoodScanner', { mealType: selectedMealType })}
+          >
+            <Ionicons name="camera" size={20} color="#fff" />
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.scanButtonOutline}
+            onPress={() => navigation.navigate('BarcodeScanner', { mealType: selectedMealType })}
+          >
+            <Ionicons name="barcode-outline" size={20} color="#e74c3c" />
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.advancedButton}
+            onPress={() => navigation.navigate('NutritionTracking')}
+          >
+            <Ionicons name="analytics" size={18} color="#e74c3c" />
+            <Text style={styles.advancedButtonText}>Advanced</Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
       {/* Tab Bar */}
@@ -486,6 +500,27 @@ const styles = StyleSheet.create({
     fontSize: 28,
     fontWeight: 'bold',
     color: '#fff',
+  },
+  headerButtons: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  scanButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#e74c3c',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  scanButtonOutline: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(231, 76, 60, 0.15)',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   advancedButton: {
     flexDirection: 'row',

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useCallback } from 'react';
 import { StyleSheet, View, ViewStyle } from 'react-native';
 import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -10,6 +10,7 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 import { TouchableOpacity } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
 import { useHaptics } from './useHaptics';
 import { SPRING_CONFIG, ANIMATION_DURATION, EASING } from './config';
 
@@ -19,7 +20,7 @@ interface GlassCardProps {
   onPress?: () => void;
   style?: ViewStyle;
   blurIntensity?: number;
-  gradientColors?: string[];
+  gradientColors?: readonly [string, string, ...string[]];
   borderGlow?: boolean;
   glowColor?: string;
 }
@@ -30,25 +31,36 @@ export default function GlassCard({
   onPress,
   style,
   blurIntensity = 40,
-  gradientColors = ['rgba(255, 255, 255, 0.08)', 'rgba(255, 255, 255, 0.02)'],
+  gradientColors = ['rgba(255, 255, 255, 0.08)', 'rgba(255, 255, 255, 0.02)'] as const,
   borderGlow = false,
   glowColor = '#e74c3c',
 }: GlassCardProps) {
   const scale = useSharedValue(1);
-  const opacity = useSharedValue(0);
-  const translateY = useSharedValue(20);
+  const opacity = useSharedValue(1); // Start visible
+  const translateY = useSharedValue(0);
   const { trigger } = useHaptics();
 
-  React.useEffect(() => {
-    opacity.value = withDelay(
-      delay,
-      withTiming(1, { duration: ANIMATION_DURATION.normal, easing: EASING.easeOut })
-    );
-    translateY.value = withDelay(
-      delay,
-      withSpring(0, SPRING_CONFIG.gentle)
-    );
-  }, []);
+  useFocusEffect(
+    useCallback(() => {
+      // Reset and animate
+      opacity.value = 0;
+      translateY.value = 20;
+
+      opacity.value = withDelay(
+        delay,
+        withTiming(1, { duration: ANIMATION_DURATION.normal, easing: EASING.easeOut })
+      );
+      translateY.value = withDelay(
+        delay,
+        withSpring(0, SPRING_CONFIG.gentle)
+      );
+
+      return () => {
+        opacity.value = 1;
+        translateY.value = 0;
+      };
+    }, [delay])
+  );
 
   const handlePressIn = () => {
     if (onPress) {

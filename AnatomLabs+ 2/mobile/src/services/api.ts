@@ -31,7 +31,7 @@ import {
 // Find it using: ipconfig (Windows) or ifconfig (Mac/Linux)
 
 // Configuration: Update your IP here
-const YOUR_IP = '192.168.1.59';
+const YOUR_IP = '192.168.1.18';
 
 // Automatic URL selection based on platform
 import { Platform } from 'react-native';
@@ -344,6 +344,162 @@ class ApiService {
       }
     );
     return { log: response.data.log, streak: response.data.streak };
+  }
+
+  // Create food and log it (for AI-scanned or barcode-scanned foods)
+  async logScannedFood(
+    foodData: {
+      name: string;
+      calories: number;
+      protein: number;
+      carbs: number;
+      fat: number;
+      servingSize: number;
+      servingUnit: string;
+      barcode?: string;
+      brand?: string;
+      category?: string;
+      fiber?: number;
+      sugar?: number;
+      // Electrolytes & Minerals
+      sodium?: number;
+      potassium?: number;
+      calcium?: number;
+      magnesium?: number;
+      phosphorus?: number;
+      iron?: number;
+      // Vitamins
+      vitaminA?: number;
+      vitaminC?: number;
+      vitaminD?: number;
+    },
+    servings: number,
+    mealType: string
+  ): Promise<{ success: boolean; error?: string; log?: FoodLog }> {
+    try {
+      // First, try to find existing food by barcode
+      let foodId: string | null = null;
+
+      if (foodData.barcode) {
+        try {
+          const foods = await this.getFoods();
+          const existingFood = foods.find((f: any) => f.barcode === foodData.barcode);
+          if (existingFood) {
+            foodId = existingFood.id;
+          }
+        } catch (e) {
+          // Continue to create new food
+        }
+      }
+
+      // If no existing food, create a new one
+      if (!foodId) {
+        const createResponse = await this.api.post<{ message: string; food: Food }>('/nutrition/foods', {
+          name: foodData.name,
+          calories: foodData.calories,
+          protein: foodData.protein,
+          carbs: foodData.carbs,
+          fat: foodData.fat,
+          fiber: foodData.fiber || 0,
+          servingSize: foodData.servingSize,
+          servingUnit: foodData.servingUnit,
+          barcode: foodData.barcode,
+          brand: foodData.brand,
+          category: foodData.category || 'scanned',
+          // Electrolytes & Minerals
+          sodium: foodData.sodium || 0,
+          potassium: foodData.potassium || 0,
+          calcium: foodData.calcium || 0,
+          magnesium: foodData.magnesium || 0,
+          phosphorus: foodData.phosphorus || 0,
+          iron: foodData.iron || 0,
+          // Vitamins
+          vitaminA: foodData.vitaminA || 0,
+          vitaminC: foodData.vitaminC || 0,
+          vitaminD: foodData.vitaminD || 0,
+        });
+        foodId = createResponse.data.food?.id;
+      }
+
+      if (!foodId) {
+        return { success: false, error: 'Failed to create food entry' };
+      }
+
+      // Log the food
+      const logResponse = await this.api.post<{ message: string; log: FoodLog; streak: StreakUpdate }>(
+        '/nutrition/log',
+        {
+          foodId,
+          servings,
+          mealType,
+          date: new Date().toISOString(),
+        }
+      );
+
+      return { success: true, log: logResponse.data.log };
+    } catch (error: any) {
+      console.error('Failed to log scanned food:', error);
+      return {
+        success: false,
+        error: error.response?.data?.error || error.message || 'Failed to log food',
+      };
+    }
+  }
+
+  // Food Image Recognition (AI-powered)
+  async scanFoodImage(imageBase64: string, mimeType: string = 'image/jpeg'): Promise<{
+    success: boolean;
+    foods: Array<{
+      name: string;
+      confidence: number;
+      estimatedCalories: number;
+      estimatedProtein: number;
+      estimatedCarbs: number;
+      estimatedFat: number;
+      estimatedFiber: number;
+      servingSize: string;
+      servingUnit: string;
+      category: string;
+      // Electrolytes
+      estimatedSodium: number;
+      estimatedPotassium: number;
+      // Macrominerals
+      estimatedCalcite: number; // calcium
+      estimatedMagnesium: number;
+      estimatedPhosphorus: number;
+      // Key vitamins
+      estimatedIron: number;
+      estimatedVitaminC: number;
+      estimatedVitaminA: number;
+    }>;
+    totalEstimatedCalories: number;
+    totalMacros: { protein: number; carbs: number; fat: number; fiber: number };
+    totalElectrolytes: { sodium: number; potassium: number };
+    totalMinerals: { calcium: number; magnesium: number; phosphorus: number; iron: number };
+    mealDescription: string;
+    confidence: 'low' | 'medium' | 'high';
+    disclaimer: string;
+  }> {
+    try {
+      const response = await this.api.post('/nutrition/scan-food', {
+        image: imageBase64,
+        mimeType,
+      });
+      return response.data;
+    } catch (error: any) {
+      console.error('Food scan error:', error);
+      return {
+        success: false,
+        foods: [],
+        totalEstimatedCalories: 0,
+        totalMacros: { protein: 0, carbs: 0, fat: 0, fiber: 0 },
+        totalElectrolytes: { sodium: 0, potassium: 0 },
+        totalMinerals: { calcium: 0, magnesium: 0, phosphorus: 0, iron: 0 },
+        mealDescription: 'Failed to analyze image',
+        confidence: 'low',
+        disclaimer: error.message || 'Unable to scan food',
+      };
+    }
   }
 
   // Activity

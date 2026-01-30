@@ -11,6 +11,8 @@ import {
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
+import { useNavigation } from '@react-navigation/native';
+import { Ionicons } from '@expo/vector-icons';
 import { Food } from '../../types';
 import api from '../../services/api';
 
@@ -22,12 +24,18 @@ interface AddFoodModalProps {
 }
 
 export default function AddFoodModal({ visible, mealType, onClose, onAddFood }: AddFoodModalProps) {
+  const navigation = useNavigation<any>();
   const [search, setSearch] = useState('');
   const [foods, setFoods] = useState<Food[]>([]);
   const [filteredFoods, setFilteredFoods] = useState<Food[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [selectedFood, setSelectedFood] = useState<Food | null>(null);
   const [servings, setServings] = useState('1');
+
+  const handleOpenScanner = () => {
+    onClose();
+    navigation.navigate('BarcodeScanner', { mealType });
+  };
 
   useEffect(() => {
     if (visible) {
@@ -136,14 +144,19 @@ export default function AddFoodModal({ visible, mealType, onClose, onAddFood }: 
         </View>
 
         <View style={styles.searchContainer}>
-          <TextInput
-            style={styles.searchInput}
-            placeholder="Search foods..."
-            placeholderTextColor="#666"
-            value={search}
-            onChangeText={setSearch}
-            autoFocus
-          />
+          <View style={styles.searchRow}>
+            <TextInput
+              style={styles.searchInput}
+              placeholder="Search foods..."
+              placeholderTextColor="#666"
+              value={search}
+              onChangeText={setSearch}
+              autoFocus
+            />
+            <TouchableOpacity style={styles.scanButtonModal} onPress={handleOpenScanner}>
+              <Ionicons name="barcode" size={22} color="#fff" />
+            </TouchableOpacity>
+          </View>
         </View>
 
         {selectedFood ? (
@@ -252,7 +265,12 @@ const styles = StyleSheet.create({
   searchContainer: {
     padding: 16,
   },
+  searchRow: {
+    flexDirection: 'row',
+    gap: 10,
+  },
   searchInput: {
+    flex: 1,
     backgroundColor: '#1a1a1a',
     borderRadius: 12,
     padding: 14,
@@ -260,6 +278,14 @@ const styles = StyleSheet.create({
     fontSize: 16,
     borderWidth: 1,
     borderColor: '#333',
+  },
+  scanButtonModal: {
+    width: 50,
+    height: 50,
+    borderRadius: 12,
+    backgroundColor: '#e74c3c',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   loadingContainer: {
     flex: 1,

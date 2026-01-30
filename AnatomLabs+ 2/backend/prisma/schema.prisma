@@ -203,6 +203,7 @@ model Food {
   name        String
   brand       String?
   category    String?  // Food category
+  barcode     String?  // For barcode scanning
 
   // Serving info
   servingSize Float    // in grams
@@ -216,14 +217,49 @@ model Food {
   fiber       Float?   // g
   sugar       Float?   // g
 
-  // Micros (per serving, in mg or mcg)
-  vitaminA    Float?
-  vitaminC    Float?
-  vitaminD    Float?
-  calcium     Float?
-  iron        Float?
-  potassium   Float?
-  sodium      Float?
+  // ========== ELECTROLYTES (mg) ==========
+  sodium      Float?   // Key electrolyte - nerve/muscle function
+  potassium   Float?   // Key electrolyte - heart/muscle function
+  chloride    Float?   // Key electrolyte - fluid balance
+
+  // ========== MACROMINERALS (mg) ==========
+  calcium     Float?   // Bones, muscle contraction
+  magnesium   Float?   // 300+ enzymatic reactions, muscle/nerve
+  phosphorus  Float?   // Bones, energy production (ATP)
+
+  // ========== TRACE MINERALS (mg) ==========
+  iron        Float?   // Oxygen transport, energy
+  zinc        Float?   // Immune function, protein synthesis
+  copper      Float?   // Iron metabolism, connective tissue
+  manganese   Float?   // Bone formation, metabolism
+  selenium    Float?   // Antioxidant, thyroid function (mcg)
+  iodine      Float?   // Thyroid function (mcg)
+  chromium    Float?   // Glucose metabolism (mcg)
+
+  // ========== FAT-SOLUBLE VITAMINS ==========
+  vitaminA    Float?   // Vision, immune (mcg RAE)
+  vitaminD    Float?   // Bone health, immune (mcg)
+  vitaminE    Float?   // Antioxidant (mg)
+  vitaminK    Float?   // Blood clotting, bones (mcg)
+
+  // ========== WATER-SOLUBLE VITAMINS ==========
+  vitaminC    Float?   // Immune, collagen (mg)
+  vitaminB1   Float?   // Thiamin - energy metabolism (mg)
+  vitaminB2   Float?   // Riboflavin - energy, cell function (mg)
+  vitaminB3   Float?   // Niacin - energy, DNA repair (mg)
+  vitaminB5   Float?   // Pantothenic acid - energy (mg)
+  vitaminB6   Float?   // Protein metabolism, brain (mg)
+  vitaminB7   Float?   // Biotin - metabolism (mcg)
+  vitaminB9   Float?   // Folate - cell division (mcg DFE)
+  vitaminB12  Float?   // Nerve function, blood (mcg)
+
+  // ========== OTHER NUTRIENTS ==========
+  cholesterol Float?   // mg
+  omega3      Float?   // g - EPA/DHA combined
+  omega6      Float?   // g
+  transFat    Float?   // g
+  saturatedFat Float?  // g
+  caffeine    Float?   // mg
 
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
@@ -244,11 +280,22 @@ model NutritionLog {
   // Quantity consumed
   servings    Float
 
-  // Calculated totals
+  // Calculated totals - Macros
   totalCalories Float?
   totalProtein  Float?
   totalCarbs    Float?
   totalFat      Float?
+  totalFiber    Float?
+
+  // Calculated totals - Electrolytes (mg)
+  totalSodium     Float?
+  totalPotassium  Float?
+
+  // Calculated totals - Macrominerals (mg)
+  totalCalcium    Float?
+  totalMagnesium  Float?
+  totalPhosphorus Float?
+  totalIron       Float?
 
   // Water intake (ml) - logged separately but in same table
   waterMl     Float?

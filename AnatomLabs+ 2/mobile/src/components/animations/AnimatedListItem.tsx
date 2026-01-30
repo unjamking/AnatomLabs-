@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useCallback } from 'react';
 import { ViewStyle } from 'react-native';
 import Animated, {
   useSharedValue,
@@ -7,6 +7,7 @@ import Animated, {
   withTiming,
   withSpring,
 } from 'react-native-reanimated';
+import { useFocusEffect } from '@react-navigation/native';
 import { ANIMATION_DURATION, SPRING_CONFIG, EASING, STAGGER_DELAY } from './config';
 
 interface AnimatedListItemProps {
@@ -22,23 +23,39 @@ export default function AnimatedListItem({
   style,
   enterFrom = 'bottom',
 }: AnimatedListItemProps) {
-  const opacity = useSharedValue(0);
-  const translateX = useSharedValue(enterFrom === 'left' ? -30 : enterFrom === 'right' ? 30 : 0);
-  const translateY = useSharedValue(enterFrom === 'bottom' ? 20 : 0);
+  const opacity = useSharedValue(1); // Start visible
+  const translateX = useSharedValue(0);
+  const translateY = useSharedValue(0);
 
-  useEffect(() => {
-    const delay = index * STAGGER_DELAY;
+  useFocusEffect(
+    useCallback(() => {
+      // Reset to initial positions
+      const initialX = enterFrom === 'left' ? -30 : enterFrom === 'right' ? 30 : 0;
+      const initialY = enterFrom === 'bottom' ? 20 : 0;
 
-    opacity.value = withDelay(
-      delay,
-      withTiming(1, { duration: ANIMATION_DURATION.normal, easing: EASING.easeOut })
-    );
+      opacity.value = 0;
+      translateX.value = initialX;
+      translateY.value = initialY;
 
-    if (enterFrom !== 'fade') {
-      translateX.value = withDelay(delay, withSpring(0, SPRING_CONFIG.gentle));
-      translateY.value = withDelay(delay, withSpring(0, SPRING_CONFIG.gentle));
-    }
-  }, []);
+      // Animate in
+      const delay = index * STAGGER_DELAY;
+
+      opacity.value = withDelay(
+        delay,
+        withTiming(1, { duration: ANIMATION_DURATION.normal, easing: EASING.easeOut })
+      );
+
+      if (enterFrom !== 'fade') {
+        translateX.value = withDelay(delay, withSpring(0, SPRING_CONFIG.gentle));
+        translateY.value = withDelay(delay, withSpring(0, SPRING_CONFIG.gentle));
+      }
+
+      return () => {
+        // Ensure visible when unmounting
+        opacity.value = 1;
+      };
+    }, [index, enterFrom])
+  );
 
   const animatedStyle = useAnimatedStyle(() => ({
     opacity: opacity.value,

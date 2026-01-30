@@ -6,27 +6,37 @@
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "dark",
-        "splash": {
+    "splash": {
       "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
       "backgroundColor": "#0a0a0a"
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.anatomlabs.plus"
+      "bundleIdentifier": "com.anatomlabs.plus",
+      "infoPlist": {
+        "NSCameraUsageDescription": "AnatomLabs+ needs camera access to scan food barcodes and nutrition labels for easy food logging."
+      }
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#0a0a0a"
       },
-      "package": "com.anatomlabs.plus"
+      "package": "com.anatomlabs.plus",
+      "permissions": ["CAMERA"]
     },
     "web": {
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
-      "expo-build-properties"
+      "expo-build-properties",
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Allow AnatomLabs+ to access your camera to scan food barcodes."
+        }
+      ]
     ]
   }
 }

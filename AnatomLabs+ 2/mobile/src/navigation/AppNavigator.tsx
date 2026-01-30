@@ -21,6 +21,10 @@ import WorkoutsScreen from '../screens/tabs/WorkoutsScreen';
 import ReportsScreen from '../screens/tabs/ReportsScreen';
 import NutritionTrackingScreen from '../screens/tabs/NutritionTrackingScreen';
 import WorkoutTrackingScreen from '../screens/tabs/WorkoutTrackingScreen';
+import BarcodeScannerScreen from '../screens/scanner/BarcodeScannerScreen';
+import ScannedFoodDetailsScreen from '../screens/scanner/ScannedFoodDetailsScreen';
+import ManualFoodEntryScreen from '../screens/scanner/ManualFoodEntryScreen';
+import FoodScannerScreen from '../screens/scanner/FoodScannerScreen';
 
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
@@ -178,6 +182,36 @@ export default function AppNavigator() {
               component={WorkoutTrackingScreen}
               options={{
                 animation: 'slide_from_right',
+              }}
+            />
+            <Stack.Screen
+              name="BarcodeScanner"
+              component={BarcodeScannerScreen}
+              options={{
+                animation: 'slide_from_bottom',
+                presentation: 'fullScreenModal',
+              }}
+            />
+            <Stack.Screen
+              name="ScannedFoodDetails"
+              component={ScannedFoodDetailsScreen}
+              options={{
+                animation: 'slide_from_right',
+              }}
+            />
+            <Stack.Screen
+              name="ManualFoodEntry"
+              component={ManualFoodEntryScreen}
+              options={{
+                animation: 'slide_from_right',
+              }}
+            />
+            <Stack.Screen
+              name="FoodScanner"
+              component={FoodScannerScreen}
+              options={{
+                animation: 'slide_from_bottom',
+                presentation: 'fullScreenModal',
               }}
             />
           </>
