@@ -1,14 +1,17 @@
 /**
  * Nutrition Calculator Service
- * 
+ *
  * This service implements scientifically-validated formulas for:
  * - BMR (Basal Metabolic Rate) using Mifflin-St Jeor equation
  * - TDEE (Total Daily Energy Expenditure) with activity multipliers
  * - Macro distribution based on fitness goals
  * - Micronutrient recommendations based on DRI (Dietary Reference Intakes)
- * 
+ * - Health-aware adjustments for medical conditions
+ *
  * All calculations are transparent and explainable for judges.
  */
+
+import { getMedicalCondition, getDietaryPreference, MEDICAL_CONDITIONS } from '../constants/healthConditions';
 
 export interface UserPhysicalData {
   age: number;
@@ -17,6 +20,11 @@ export interface UserPhysicalData {
   height: number; // cm
   activityLevel: 'sedentary' | 'light' | 'moderate' | 'active' | 'very_active';
   fitnessGoal: 'muscle_gain' | 'fat_loss' | 'endurance' | 'general_fitness' | 'sport_specific';
+}
+
+export interface UserHealthProfile {
+  medicalConditions?: string[];
+  dietaryPreferences?: string[];
 }
 
 export interface MacroDistribution {
@@ -38,6 +46,14 @@ export interface MicronutrientTargets {
   sodium: number; // mg (upper limit)
 }
 
+export interface HealthAdjustments {
+  adjustedMacros: Partial<MacroDistribution>;
+  restrictions: { nutrient: string; limit?: number; reason: string }[];
+  focusNutrients: string[];
+  warnings: string[];
+  recommendations: string[];
+}
+
 export interface NutritionCalculation {
   bmr: number;
   tdee: number;
@@ -45,11 +61,13 @@ export interface NutritionCalculation {
   macros: MacroDistribution;
   micronutrients: MicronutrientTargets;
   userWeight: number; // Include user weight for water goal calculation
+  healthAdjustments?: HealthAdjustments;
   explanation: {
     bmrFormula: string;
     tdeeCalculation: string;
     calorieAdjustment: string;
     macroRationale: string;
+    healthModifications?: string;
   };
 }
 
@@ -283,12 +301,343 @@ export function calculateNutrientPercentages(
   targets: { [key: string]: number }
 ): { [key: string]: number } {
   const percentages: { [key: string]: number } = {};
-  
+
   for (const nutrient in targets) {
     const target = targets[nutrient];
     const amount = consumed[nutrient] || 0;
     percentages[nutrient] = Math.round((amount / target) * 100);
   }
-  
+
   return percentages;
+}
+
+/**
+ * Calculate health-aware adjustments based on medical conditions
+ * @param baseCalculation The base nutrition calculation
+ * @param healthProfile User's health profile (conditions and preferences)
+ * @returns Health adjustments to apply
+ */
+export function calculateHealthAdjustments(
+  baseCalculation: NutritionCalculation,
+  healthProfile: UserHealthProfile
+): HealthAdjustments {
+  const adjustments: HealthAdjustments = {
+    adjustedMacros: {},
+    restrictions: [],
+    focusNutrients: [],
+    warnings: [],
+    recommendations: []
+  };
+
+  if (!healthProfile.medicalConditions?.length && !healthProfile.dietaryPreferences?.length) {
+    return adjustments;
+  }
+
+  // Process medical conditions
+  for (const conditionId of healthProfile.medicalConditions || []) {
+    const condition = getMedicalCondition(conditionId);
+    if (!condition) continue;
+
+    // Add nutrition restrictions
+    for (const restriction of condition.nutritionAdjustments.restrictions) {
+      // Check for duplicate restrictions, keep the stricter one
+      const existing = adjustments.restrictions.find(r => r.nutrient === restriction.nutrient);
+      if (existing) {
+        if (restriction.limit !== undefined && existing.limit !== undefined) {
+          if (restriction.limit < existing.limit) {
+            existing.limit = restriction.limit;
+            existing.reason = `${existing.reason}; ${restriction.reason}`;
+          }
+        }
+      } else {
+        adjustments.restrictions.push({
+          nutrient: restriction.nutrient,
+          limit: restriction.limit,
+          reason: restriction.reason
+        });
+      }
+    }
+
+    // Add focus nutrients (unique)
+    for (const nutrient of condition.nutritionAdjustments.focusNutrients) {
+      if (!adjustments.focusNutrients.includes(nutrient)) {
+        adjustments.focusNutrients.push(nutrient);
+      }
+    }
+
+    // Add recommendations
+    adjustments.recommendations.push(...condition.nutritionAdjustments.recommendations);
+  }
+
+  // Process dietary preferences
+  for (const preferenceId of healthProfile.dietaryPreferences || []) {
+    const preference = getDietaryPreference(preferenceId);
+    if (!preference) continue;
+
+    // Add nutrition considerations as recommendations
+    adjustments.recommendations.push(...preference.nutritionConsiderations);
+
+    // Special handling for keto
+    if (preferenceId === 'keto') {
+      adjustments.adjustedMacros = {
+        carbsPercentage: 10, // 10% max carbs
+        fatPercentage: 70,   // 70% fat
+        proteinPercentage: 20
+      };
+      adjustments.warnings.push('Keto diet: Very low carb (10%), high fat (70%). May need electrolyte supplementation.');
+    }
+  }
+
+  // Apply condition-specific macro adjustments
+  applyConditionMacroAdjustments(baseCalculation, healthProfile.medicalConditions || [], adjustments);
+
+  // Remove duplicate recommendations
+  adjustments.recommendations = [...new Set(adjustments.recommendations)];
+
+  return adjustments;
+}
+
+/**
+ * Apply macro adjustments based on specific medical conditions
+ */
+function applyConditionMacroAdjustments(
+  baseCalculation: NutritionCalculation,
+  conditions: string[],
+  adjustments: HealthAdjustments
+): void {
+  const targetCalories = baseCalculation.targetCalories;
+
+  // Diabetes adjustments
+  if (conditions.includes('diabetes_type_1') || conditions.includes('diabetes_type_2')) {
+    const maxCarbPercent = conditions.includes('diabetes_type_2') ? 40 : 45;
+
+    adjustments.warnings.push(
+      `Carbohydrate intake limited to ${maxCarbPercent}% due to diabetes management`
+    );
+
+    // Adjust carbs if currently higher
+    if (baseCalculation.macros.carbsPercentage > maxCarbPercent) {
+      const newCarbCals = targetCalories * (maxCarbPercent / 100);
+      const newCarbs = Math.round(newCarbCals / 4);
+      adjustments.adjustedMacros.carbs = newCarbs;
+      adjustments.adjustedMacros.carbsPercentage = maxCarbPercent;
+
+      // Redistribute to protein
+      const extraCals = baseCalculation.macros.carbs * 4 - newCarbCals;
+      const extraProtein = Math.round(extraCals / 4);
+      adjustments.adjustedMacros.protein =
+        (adjustments.adjustedMacros.protein || baseCalculation.macros.protein) + extraProtein;
+    }
+
+    adjustments.focusNutrients.push('fiber');
+    adjustments.recommendations.push('Choose low glycemic index foods (GI < 55)');
+    adjustments.recommendations.push('Increase fiber intake to 30g+ daily');
+  }
+
+  // Kidney disease adjustments
+  if (conditions.includes('kidney_disease')) {
+    const weight = baseCalculation.userWeight;
+    const maxProtein = Math.round(weight * 0.8); // 0.8g/kg limit
+
+    if (baseCalculation.macros.protein > maxProtein) {
+      adjustments.adjustedMacros.protein = maxProtein;
+      adjustments.warnings.push(
+        `Protein limited to ${maxProtein}g (0.8g/kg) for kidney health`
+      );
+    }
+  }
+
+  // Hypertension adjustments
+  if (conditions.includes('hypertension') || conditions.includes('heart_disease')) {
+    adjustments.warnings.push('Sodium intake strictly limited to 1500mg/day');
+    adjustments.focusNutrients.push('potassium', 'magnesium');
+    adjustments.recommendations.push('Follow DASH diet principles');
+  }
+
+  // Osteoporosis adjustments
+  if (conditions.includes('osteoporosis')) {
+    adjustments.focusNutrients.push('calcium', 'vitaminD', 'vitaminK');
+    adjustments.recommendations.push('Calcium intake: 1200mg+ daily');
+    adjustments.recommendations.push('Vitamin D: 800-1000 IU daily');
+  }
+}
+
+/**
+ * Apply health adjustments to base calculation
+ * Returns a new NutritionCalculation with health modifications applied
+ */
+export function applyHealthAdjustments(
+  baseCalculation: NutritionCalculation,
+  healthProfile: UserHealthProfile
+): NutritionCalculation {
+  const adjustments = calculateHealthAdjustments(baseCalculation, healthProfile);
+
+  // If no adjustments needed, return base calculation
+  if (
+    !adjustments.adjustedMacros.carbs &&
+    !adjustments.adjustedMacros.protein &&
+    !adjustments.adjustedMacros.fat &&
+    adjustments.restrictions.length === 0
+  ) {
+    return {
+      ...baseCalculation,
+      healthAdjustments: adjustments
+    };
+  }
+
+  // Apply macro adjustments
+  const adjustedMacros: MacroDistribution = {
+    ...baseCalculation.macros,
+    protein: adjustments.adjustedMacros.protein ?? baseCalculation.macros.protein,
+    carbs: adjustments.adjustedMacros.carbs ?? baseCalculation.macros.carbs,
+    fat: adjustments.adjustedMacros.fat ?? baseCalculation.macros.fat,
+    proteinPercentage:
+      adjustments.adjustedMacros.proteinPercentage ?? baseCalculation.macros.proteinPercentage,
+    carbsPercentage:
+      adjustments.adjustedMacros.carbsPercentage ?? baseCalculation.macros.carbsPercentage,
+    fatPercentage:
+      adjustments.adjustedMacros.fatPercentage ?? baseCalculation.macros.fatPercentage
+  };
+
+  // Build health modification explanation
+  const conditionNames = (healthProfile.medicalConditions || [])
+    .map(id => getMedicalCondition(id)?.name)
+    .filter(Boolean);
+
+  const preferenceNames = (healthProfile.dietaryPreferences || [])
+    .map(id => getDietaryPreference(id)?.name)
+    .filter(Boolean);
+
+  let healthModifications = '';
+  if (conditionNames.length > 0) {
+    healthModifications += `Adjusted for: ${conditionNames.join(', ')}. `;
+  }
+  if (preferenceNames.length > 0) {
+    healthModifications += `Diet: ${preferenceNames.join(', ')}.`;
+  }
+
+  return {
+    ...baseCalculation,
+    macros: adjustedMacros,
+    healthAdjustments: adjustments,
+    explanation: {
+      ...baseCalculation.explanation,
+      healthModifications: healthModifications.trim()
+    }
+  };
+}
+
+/**
+ * Calculate complete nutrition plan with health awareness
+ */
+export function calculateHealthAwareNutritionPlan(
+  userData: UserPhysicalData,
+  healthProfile?: UserHealthProfile
+): NutritionCalculation {
+  // Get base calculation
+  const baseCalculation = calculateNutritionPlan(userData);
+
+  // Apply health adjustments if profile provided
+  if (healthProfile && (healthProfile.medicalConditions?.length || healthProfile.dietaryPreferences?.length)) {
+    return applyHealthAdjustments(baseCalculation, healthProfile);
+  }
+
+  return baseCalculation;
+}
+
+/**
+ * Filter foods based on user allergies and dietary preferences
+ */
+export function filterFoodsForUser(
+  foods: any[],
+  allergies: string[],
+  preferences: string[]
+): { allowed: any[]; excluded: { food: any; reason: string }[] } {
+  const allowed: any[] = [];
+  const excluded: { food: any; reason: string }[] = [];
+
+  for (const food of foods) {
+    let isExcluded = false;
+    let excludeReason = '';
+
+    // Check allergies
+    if (food.allergens && Array.isArray(food.allergens)) {
+      for (const allergy of allergies) {
+        if (food.allergens.some((a: string) => a.toLowerCase().includes(allergy.toLowerCase()))) {
+          isExcluded = true;
+          excludeReason = `Contains allergen: ${allergy}`;
+          break;
+        }
+      }
+    }
+
+    // Check dietary preferences if not already excluded
+    if (!isExcluded) {
+      for (const pref of preferences) {
+        switch (pref) {
+          case 'vegetarian':
+            if (food.category?.toLowerCase().includes('meat') ||
+                food.category?.toLowerCase().includes('poultry') ||
+                food.category?.toLowerCase().includes('fish')) {
+              isExcluded = true;
+              excludeReason = 'Not vegetarian';
+            }
+            break;
+          case 'vegan':
+            if (!food.isVegan && (
+              food.category?.toLowerCase().includes('meat') ||
+              food.category?.toLowerCase().includes('dairy') ||
+              food.category?.toLowerCase().includes('egg') ||
+              food.category?.toLowerCase().includes('fish')
+            )) {
+              isExcluded = true;
+              excludeReason = 'Not vegan';
+            }
+            break;
+          case 'halal':
+            if (food.category?.toLowerCase().includes('pork') ||
+                food.name?.toLowerCase().includes('pork') ||
+                food.name?.toLowerCase().includes('bacon') ||
+                food.name?.toLowerCase().includes('ham')) {
+              isExcluded = true;
+              excludeReason = 'Not halal';
+            }
+            break;
+          case 'kosher':
+            if (food.category?.toLowerCase().includes('pork') ||
+                food.category?.toLowerCase().includes('shellfish')) {
+              isExcluded = true;
+              excludeReason = 'Not kosher';
+            }
+            break;
+          case 'gluten':
+            if (!food.isGlutenFree && (
+              food.name?.toLowerCase().includes('bread') ||
+              food.name?.toLowerCase().includes('pasta') ||
+              food.name?.toLowerCase().includes('wheat')
+            )) {
+              isExcluded = true;
+              excludeReason = 'Contains gluten';
+            }
+            break;
+          case 'keto':
+            // Exclude high-carb foods for keto (rough estimate: >15g carbs per serving)
+            if (food.carbs > 15) {
+              isExcluded = true;
+              excludeReason = 'Too high in carbs for keto';
+            }
+            break;
+        }
+        if (isExcluded) break;
+      }
+    }
+
+    if (isExcluded) {
+      excluded.push({ food, reason: excludeReason });
+    } else {
+      allowed.push(food);
+    }
+  }
+
+  return { allowed, excluded };
 }

@@ -29,6 +29,17 @@ model User {
   experienceLevel   String?  // "beginner", "intermediate", "advanced"
   goal              String?  // Alias for fitnessGoal (for compatibility)
 
+  // BMI (calculated, cached)
+  bmi               Float?
+  bmiCategory       String?  // "severely_underweight", "underweight", "normal", "overweight", "obese_1", "obese_2", "obese_3"
+
+  // Health Profile
+  healthConditions      String[]   @default([])  // ["diabetes_type_2", "hypertension"]
+  physicalLimitations   String[]   @default([])  // ["lower_back_injury", "knee_injury"]
+  foodAllergies         String[]   @default([])  // ["peanuts", "dairy", "gluten"]
+  dietaryPreferences    String[]   @default([])  // ["vegetarian", "halal", "keto"]
+  healthProfileComplete Boolean    @default(false)
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -262,6 +273,17 @@ model Food {
   saturatedFat Float?  // g
   caffeine    Float?   // mg
 
+  // ========== ALLERGENS & DIETARY FLAGS ==========
+  allergens     String[]   @default([])  // ["peanuts", "dairy", "gluten", "eggs", etc.]
+  isVegetarian  Boolean    @default(false)
+  isVegan       Boolean    @default(false)
+  isHalal       Boolean    @default(false)
+  isKosher      Boolean    @default(false)
+  isGlutenFree  Boolean    @default(false)
+  isDairyFree   Boolean    @default(false)
+  isLowSodium   Boolean    @default(false)
+  glycemicIndex Int?       // For diabetes management
+
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
@@ -324,6 +346,10 @@ model ActivityLog {
   distance    Float?    // km
   activeMinutes Int?
   notes       String?
+
+  // Daily tracking
+  waterIntake Int       @default(0)  // ml
+  sleepHours  Float?    // hours of sleep
 
   // Calculated values
   caloriesBurned Float  // Based on steps and user data

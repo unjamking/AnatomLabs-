@@ -23,11 +23,27 @@ router.post('/generate', authenticateToken, async (req: AuthRequest, res: Respon
       });
     }
 
+    // Fetch user's health profile for filtering
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        physicalLimitations: true,
+        healthConditions: true
+      }
+    });
+
     const params: WorkoutGenerationParams = {
       goal,
       experienceLevel,
       daysPerWeek,
-      sport: sport || null
+      sport: sport || null,
+      // Include health context if user has conditions
+      healthContext: (user?.physicalLimitations?.length || user?.healthConditions?.length)
+        ? {
+            physicalLimitations: user.physicalLimitations || [],
+            medicalConditions: user.healthConditions || []
+          }
+        : undefined
     };
 
     const workoutSplit = generateWorkoutPlan(params);
@@ -94,7 +110,8 @@ router.post('/generate', authenticateToken, async (req: AuthRequest, res: Respon
 
     res.status(201).json({
       message: 'Workout plan generated successfully',
-      plan: fullPlan
+      plan: fullPlan,
+      healthModifications: workoutSplit.healthModifications || null
     });
   } catch (error) {
     res.status(500).json({ error: 'Internal server error' });

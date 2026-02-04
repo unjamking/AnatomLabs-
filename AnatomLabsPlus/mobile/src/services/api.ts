@@ -25,30 +25,24 @@ import {
   SuggestionsResponse,
   RecentFoodsResponse,
   MealPreset,
+  BMIResult,
+  HealthConditionsResponse,
+  HealthProfile,
 } from '../types';
 
 // IMPORTANT: Update this with your computer's IP address
 // Find it using: ipconfig (Windows) or ifconfig (Mac/Linux)
 
 // Configuration: Update your IP here
-const YOUR_IP = '172.20.10.3';
+const YOUR_IP = '192.168.88.89';
 
 // Automatic URL selection based on platform
 import { Platform } from 'react-native';
 
 const getApiUrl = () => {
   if (__DEV__) {
-    // iOS Simulator can use localhost directly
-    // For physical devices, use your Mac's IP address (YOUR_IP)
-    if (Platform.OS === 'ios') {
-      // Check if running in simulator (localhost works) vs physical device (needs IP)
-      // Simulator uses localhost, physical device needs IP
-      return 'http://localhost:3001/api';
-    }
-    // Android emulator uses 10.0.2.2 to reach host localhost
-    if (Platform.OS === 'android') {
-      return 'http://10.0.2.2:3001/api';
-    }
+    // For physical devices, always use your Mac's IP address
+    // localhost only works on iOS Simulator, not physical phones
     return `http://${YOUR_IP}:3001/api`;
   }
   // Production mode
@@ -56,6 +50,13 @@ const getApiUrl = () => {
 };
 
 const API_BASE_URL = getApiUrl();
+
+// Callback for when auth fails - will be set by AuthContext
+let onAuthFailure: (() => void) | null = null;
+
+export const setAuthFailureCallback = (callback: () => void) => {
+  onAuthFailure = callback;
+};
 
 class ApiService {
   private api: AxiosInstance;
@@ -89,6 +90,10 @@ class ApiService {
           // Clear token on unauthorized
           await AsyncStorage.removeItem('auth_token');
           await AsyncStorage.removeItem('user_data');
+          // Trigger logout in AuthContext
+          if (onAuthFailure) {
+            onAuthFailure();
+          }
         }
         return Promise.reject(this.handleError(error));
       }
@@ -97,24 +102,78 @@ class ApiService {
 
   private handleError(error: AxiosError): ApiError {
     if (error.response) {
+      const status = error.response.status;
+      const serverMessage = (error.response.data as any)?.message || (error.response.data as any)?.error;
+
+      // User-friendly messages based on status code
+      let friendlyMessage: string;
+
+      switch (status) {
+        case 400:
+          friendlyMessage = serverMessage || 'There was a problem with your request. Please check your input and try again.';
+          break;
+        case 401:
+          friendlyMessage = 'Your session has expired. Please log in again for security reasons.';
+          break;
+        case 403:
+          friendlyMessage = 'Sorry, you do not have permission to access this. Please contact support if you believe this is an error.';
+          break;
+        case 404:
+          friendlyMessage = serverMessage || 'We could not find the information you were looking for. It might have been moved or deleted.';
+          break;
+        case 405:
+          friendlyMessage = 'The action you are trying to do is not allowed.';
+          break;
+        case 409:
+          friendlyMessage = serverMessage || 'It seems this item already exists. Please try a different name or option.';
+          break;
+        case 422:
+          friendlyMessage = serverMessage || 'The data you provided could not be processed. Please check for errors and try again.';
+          break;
+        case 429:
+          friendlyMessage = 'You are making too many requests. Please wait a moment before trying again.';
+          break;
+        case 500:
+          friendlyMessage = 'A server error occurred. We are working on fixing it. Please try again later.';
+          break;
+        case 502:
+        case 503:
+        case 504:
+          friendlyMessage = 'We are having trouble connecting to our servers. This is a temporary issue, please try again in a few moments.';
+          break;
+        default:
+          friendlyMessage = serverMessage || `An unexpected error occurred (Code: ${status}). Please try again.`;
+      }
+
       return {
         success: false,
-        error: 'API Error',
-        message: (error.response.data as any)?.message || error.message,
-        statusCode: error.response.status,
+        error: friendlyMessage,
+        message: friendlyMessage,
+        statusCode: status,
       };
     } else if (error.request) {
+      // Network error - no response received
+      let networkMessage = 'Unable to connect. Please check your internet connection.';
+
+      if (error.code === 'ECONNABORTED') {
+        networkMessage = 'Request timed out. Please check your connection and try again.';
+      } else if (error.code === 'ERR_NETWORK') {
+        networkMessage = 'Network error. Make sure you\'re connected to the internet.';
+      }
+
       return {
         success: false,
-        error: 'Network Error',
-        message: 'Unable to reach server. Check your connection.',
+        error: networkMessage,
+        message: networkMessage,
         statusCode: 0,
       };
     }
+
+    // Unknown error
     return {
       success: false,
-      error: 'Unknown Error',
-      message: error.message,
+      error: 'Something unexpected happened. Please try again.',
+      message: 'Something unexpected happened. Please try again.',
       statusCode: 0,
     };
   }
@@ -145,10 +204,23 @@ class ApiService {
 
   async getCurrentUser(): Promise<User | null> {
     try {
-      const userData = await AsyncStorage.getItem('user_data');
-      return userData ? JSON.parse(userData) : null;
-    } catch {
-      return null;
+      // First try to fetch from the server to validate the token
+      const response = await this.api.get('/users/me');
+      const user = response.data;
+      // Update cached user data
+      if (user) {
+        await AsyncStorage.setItem('user_data', JSON.stringify(user));
+      }
+      return user;
+    } catch (error) {
+      // If server request fails, fall back to cached data
+      // (but the 401 interceptor will handle logout if needed)
+      try {
+        const userData = await AsyncStorage.getItem('user_data');
+        return userData ? JSON.parse(userData) : null;
+      } catch {
+        return null;
+      }
     }
   }
 
@@ -584,6 +656,22 @@ class ApiService {
     return response.data.data;
   }
 
+  // Get today's activity log (or create if doesn't exist)
+  async getTodayActivity(): Promise<ActivityLog> {
+    const response = await this.api.get<ActivityLog>('/activity/today');
+    return response.data;
+  }
+
+  // Update today's activity log (steps, water, sleep)
+  async updateTodayActivity(data: {
+    steps?: number;
+    waterIntake?: number;
+    sleepHours?: number;
+  }): Promise<{ message: string; log: ActivityLog }> {
+    const response = await this.api.put<{ message: string; log: ActivityLog }>('/activity/today', data);
+    return response.data;
+  }
+
   // Reports
   async getDailyReport(date?: string): Promise<DailyReport> {
     // Backend doesn't have a daily report endpoint, so we construct one from available data
@@ -652,6 +740,42 @@ class ApiService {
       recommendations: ['Start tracking your workouts to get injury risk assessments'],
       needsRestDay: false,
     };
+  }
+
+  // ============================================
+  // BMI & Health Profile
+  // ============================================
+
+  async getBMIAnalysis(): Promise<BMIResult> {
+    const response = await this.api.get<BMIResult>('/users/me/bmi');
+    return response.data;
+  }
+
+  async getHealthConditions(): Promise<HealthConditionsResponse> {
+    const response = await this.api.get<{ success: boolean; data: HealthConditionsResponse }>(
+      '/health/conditions'
+    );
+    return response.data.data;
+  }
+
+  async getHealthProfile(): Promise<HealthProfile> {
+    const response = await this.api.get<{ success: boolean; healthProfile: HealthProfile }>(
+      '/users/me/health-profile'
+    );
+    return response.data.healthProfile;
+  }
+
+  async updateHealthProfile(profile: {
+    healthConditions?: string[];
+    physicalLimitations?: string[];
+    foodAllergies?: string[];
+    dietaryPreferences?: string[];
+  }): Promise<HealthProfile> {
+    const response = await this.api.put<{ success: boolean; healthProfile: HealthProfile }>(
+      '/users/me/health-profile',
+      profile
+    );
+    return response.data.healthProfile;
   }
 }
 

@@ -9,13 +9,15 @@ import {
   RefreshControl,
   TouchableOpacity,
   ScrollView,
-  Platform,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import Animated, {
   useSharedValue,
   useAnimatedScrollHandler,
+  useAnimatedStyle,
   withSpring,
+  withTiming,
+  interpolate,
 } from 'react-native-reanimated';
 import { Ionicons } from '@expo/vector-icons';
 import { useNutrition } from '../../context/NutritionContext';
@@ -29,35 +31,70 @@ import {
   GlassCard,
   FadeIn,
   SlideIn,
+  ScaleIn,
   Skeleton,
   useHaptics,
   COLORS,
   SPRING_CONFIG,
 } from '../../components/animations';
-import { Food, FoodLog, NutritionPlan, WeightLog } from '../../types';
+import { Food, FoodLog, NutrientTarget } from '../../types';
 import api from '../../services/api';
 
 // Micronutrient daily values (RDA)
 const MICRONUTRIENT_RDA: { [key: string]: { name: string; unit: string; target: number; color: string } } = {
+  // Fiber & Sugars
   fiber: { name: 'Fiber', unit: 'g', target: 28, color: '#8B4513' },
   sugar: { name: 'Sugar', unit: 'g', target: 50, color: '#FF69B4' },
+
+  // Electrolytes & Macrominerals
   sodium: { name: 'Sodium', unit: 'mg', target: 2300, color: '#4169E1' },
   potassium: { name: 'Potassium', unit: 'mg', target: 4700, color: '#9370DB' },
   calcium: { name: 'Calcium', unit: 'mg', target: 1000, color: '#E0E0E0' },
   magnesium: { name: 'Magnesium', unit: 'mg', target: 420, color: '#20B2AA' },
   phosphorus: { name: 'Phosphorus', unit: 'mg', target: 700, color: '#DAA520' },
+  chloride: { name: 'Chloride', unit: 'mg', target: 2300, color: '#87CEEB' },
+
+  // Trace Minerals
   iron: { name: 'Iron', unit: 'mg', target: 18, color: '#B22222' },
   zinc: { name: 'Zinc', unit: 'mg', target: 11, color: '#708090' },
+  copper: { name: 'Copper', unit: 'mg', target: 0.9, color: '#CD7F32' },
+  manganese: { name: 'Manganese', unit: 'mg', target: 2.3, color: '#9966CC' },
+  selenium: { name: 'Selenium', unit: 'mcg', target: 55, color: '#C0C0C0' },
+  iodine: { name: 'Iodine', unit: 'mcg', target: 150, color: '#8A2BE2' },
+  chromium: { name: 'Chromium', unit: 'mcg', target: 35, color: '#A9A9A9' },
+  molybdenum: { name: 'Molybdenum', unit: 'mcg', target: 45, color: '#696969' },
+
+  // Fat-Soluble Vitamins
   vitaminA: { name: 'Vitamin A', unit: 'mcg', target: 900, color: '#FF8C00' },
   vitaminD: { name: 'Vitamin D', unit: 'mcg', target: 20, color: '#FFD700' },
+  vitaminE: { name: 'Vitamin E', unit: 'mg', target: 15, color: '#98FB98' },
+  vitaminK: { name: 'Vitamin K', unit: 'mcg', target: 120, color: '#006400' },
+
+  // Water-Soluble Vitamins (B Complex)
   vitaminC: { name: 'Vitamin C', unit: 'mg', target: 90, color: '#FFA500' },
+  thiamin: { name: 'Thiamin (B1)', unit: 'mg', target: 1.2, color: '#FFE4B5' },
+  riboflavin: { name: 'Riboflavin (B2)', unit: 'mg', target: 1.3, color: '#FFDEAD' },
+  niacin: { name: 'Niacin (B3)', unit: 'mg', target: 16, color: '#F0E68C' },
+  pantothenicAcid: { name: 'Pantothenic Acid (B5)', unit: 'mg', target: 5, color: '#EEE8AA' },
+  vitaminB6: { name: 'Vitamin B6', unit: 'mg', target: 1.7, color: '#BDB76B' },
+  biotin: { name: 'Biotin (B7)', unit: 'mcg', target: 30, color: '#F5DEB3' },
+  folate: { name: 'Folate (B9)', unit: 'mcg', target: 400, color: '#ADFF2F' },
   vitaminB12: { name: 'Vitamin B12', unit: 'mcg', target: 2.4, color: '#FF6347' },
+
+  // Essential Fatty Acids
+  omega3: { name: 'Omega-3 (ALA)', unit: 'g', target: 1.6, color: '#4682B4' },
+  omega6: { name: 'Omega-6 (LA)', unit: 'g', target: 17, color: '#5F9EA0' },
+
+  // Other Important Nutrients
+  choline: { name: 'Choline', unit: 'mg', target: 550, color: '#DDA0DD' },
+  cholesterol: { name: 'Cholesterol', unit: 'mg', target: 300, color: '#DC143C' },
+  saturatedFat: { name: 'Saturated Fat', unit: 'g', target: 20, color: '#8B0000' },
+  transFat: { name: 'Trans Fat', unit: 'g', target: 0, color: '#FF0000' },
 };
 
-type TabType = 'diary' | 'nutrients' | 'trends' | 'goals';
+type TabType = 'diary' | 'nutrients' | 'trends' | 'biometrics';
 
-export default function NutritionScreen() {
-  const navigation = useNavigation<any>();
+export default function NutritionTrackingScreen() {
   const {
     todaySummary,
     targets,
@@ -68,6 +105,7 @@ export default function NutritionScreen() {
     refreshAll,
     refreshToday,
     logFood,
+    updateLog,
     deleteLog,
     logWeight,
   } = useNutrition();
@@ -85,18 +123,10 @@ export default function NutritionScreen() {
   const [isSearching, setIsSearching] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [waterIntake, setWaterIntake] = useState(0);
-  const [showFormulas, setShowFormulas] = useState(false);
-  const [weightInput, setWeightInput] = useState('');
-  const [weightHistory, setWeightHistory] = useState<WeightLog[]>([]);
-  const [localTargets, setLocalTargets] = useState<NutritionPlan | null>(null);
-  const [calorieHistory, setCalorieHistory] = useState<{
-    history: Array<{ date: string; calories: number; dayOfWeek: string }>;
-    stats: { average: number; target: number; adherence: number; daysTracked: number; totalDays: number };
-  } | null>(null);
 
   const scrollY = useSharedValue(0);
+  const navigation = useNavigation();
   const { trigger } = useHaptics();
-  const tabIndicatorPosition = useSharedValue(0);
 
   const scrollHandler = useAnimatedScrollHandler({
     onScroll: (event) => {
@@ -105,50 +135,13 @@ export default function NutritionScreen() {
   });
 
   useEffect(() => {
-    loadInitialData();
+    refreshAll();
   }, []);
-
-  const loadInitialData = async () => {
-    await refreshAll();
-    loadWeightHistory();
-    loadTargets();
-    loadCalorieHistory();
-  };
-
-  const loadCalorieHistory = async () => {
-    try {
-      const history = await api.getCalorieHistory(7);
-      setCalorieHistory(history);
-    } catch (error) {
-      console.error('Failed to load calorie history:', error);
-    }
-  };
-
-  const loadWeightHistory = async () => {
-    try {
-      const history = await api.getWeightHistory(30);
-      setWeightHistory(history);
-    } catch (error) {
-      console.error('Failed to load weight history:', error);
-    }
-  };
-
-  const loadTargets = async () => {
-    try {
-      const plan = await api.calculateNutrition();
-      setLocalTargets(plan);
-    } catch (error) {
-      console.error('Failed to load targets:', error);
-    }
-  };
 
   const onRefresh = async () => {
     setIsRefreshing(true);
     trigger('light');
     await refreshAll();
-    await loadWeightHistory();
-    await loadTargets();
-    await loadCalorieHistory();
     setIsRefreshing(false);
     trigger('success');
   };
@@ -194,41 +187,9 @@ export default function NutritionScreen() {
     }
   };
 
-  const handleLogWeight = async () => {
-    const weight = parseFloat(weightInput);
-    if (isNaN(weight) || weight <= 0) {
-      Alert.alert('Invalid Weight', 'Please enter a valid weight');
-      return;
-    }
-    try {
-      await logWeight(weight);
-      setWeightInput('');
-      await loadWeightHistory();
-      trigger('success');
-      Alert.alert('Success', 'Weight logged successfully');
-    } catch (error) {
-      Alert.alert('Error', 'Failed to log weight');
-    }
-  };
-
-  const handleTabChange = (tab: TabType) => {
-    trigger('selection');
-    setActiveTab(tab);
-    const positions = { diary: 0, nutrients: 1, trends: 2, goals: 3 };
-    tabIndicatorPosition.value = withSpring(positions[tab] * 80, SPRING_CONFIG.snappy);
-  };
-
-  const addWater = (amount: number) => {
-    trigger('light');
-    setWaterIntake(prev => prev + amount);
-  };
-
   // Calculate consumed nutrients
   const consumed = todaySummary?.totals || { calories: 0, protein: 0, carbs: 0, fat: 0 };
-  const currentTargets = localTargets || targets;
-  const targetValues = currentTargets
-    ? { targetCalories: currentTargets.targetCalories, macros: currentTargets.macros }
-    : { targetCalories: 2000, macros: { protein: 150, carbs: 250, fat: 67 } };
+  const targetValues = targets || { targetCalories: 2000, macros: { protein: 150, carbs: 250, fat: 67 } };
 
   // Calculate remaining
   const remaining = {
@@ -238,20 +199,33 @@ export default function NutritionScreen() {
     fat: Math.max(0, targetValues.macros.fat - consumed.fat),
   };
 
-  // Calculate water goal based on user weight (35ml per kg body weight)
-  const userWeight = (currentTargets as any)?.userWeight || 70; // Default 70kg if not set
-  const waterGoal = Math.round(userWeight * 35); // 35ml per kg is standard recommendation
-
-  // Net calories (with exercise)
+  // Net calories (with exercise) - estimate from today's workouts
   const today = new Date().toISOString().split('T')[0];
   const todaysWorkouts = workoutHistory.filter(w =>
     w.completedAt && w.completedAt.startsWith(today)
   );
+  // Estimate: ~5 calories per minute of strength training + 0.05 per kg lifted
   const caloriesBurned = todaysWorkouts.reduce((total, workout) => {
     const durationCals = workout.duration * 5;
     const volumeCals = workout.totalVolume * 0.05;
     return total + durationCals + volumeCals;
   }, 0);
+  const netCalories = consumed.calories - Math.round(caloriesBurned);
+
+  // Tab indicator animation
+  const tabIndicatorPosition = useSharedValue(0);
+  const handleTabChange = (tab: TabType) => {
+    trigger('selection');
+    setActiveTab(tab);
+    const positions = { diary: 0, nutrients: 1, trends: 2, biometrics: 3 };
+    tabIndicatorPosition.value = withSpring(positions[tab] * 85, SPRING_CONFIG.snappy);
+  };
+
+  // Add water
+  const addWater = (amount: number) => {
+    trigger('light');
+    setWaterIntake(prev => prev + amount);
+  };
 
   const renderDiaryTab = () => (
     <>
@@ -262,7 +236,7 @@ export default function NutritionScreen() {
             <View>
               <Text style={styles.calorieTitle}>Today's Calories</Text>
               <Text style={styles.dateText}>
-                {new Date().toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
+                {new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })}
               </Text>
             </View>
             {streak && streak.currentStreak > 0 && (
@@ -276,8 +250,8 @@ export default function NutritionScreen() {
           <View style={styles.calorieRing}>
             <AnimatedProgressRing
               progress={(consumed.calories / targetValues.targetCalories) * 100}
-              size={140}
-              strokeWidth={12}
+              size={160}
+              strokeWidth={14}
               color={consumed.calories > targetValues.targetCalories ? COLORS.warning : COLORS.primary}
               label="Remaining"
               value={remaining.calories.toString()}
@@ -302,7 +276,7 @@ export default function NutritionScreen() {
             <View style={styles.calorieItem}>
               <Text style={styles.calorieLabel}>Exercise</Text>
               <Text style={[styles.calorieValue, { color: COLORS.success }]}>
-                -{Math.round(caloriesBurned)}
+                -{caloriesBurned}
               </Text>
             </View>
           </View>
@@ -310,24 +284,24 @@ export default function NutritionScreen() {
       </SlideIn>
 
       {/* Macro Progress */}
-      <SlideIn direction="bottom" delay={150}>
+      <SlideIn direction="bottom" delay={200}>
         <GlassCard style={styles.macroCard}>
-          <Text style={styles.sectionTitle}>Macros</Text>
+          <Text style={styles.sectionTitle}>Macronutrients</Text>
           <View style={styles.macroGrid}>
             {[
-              { name: 'P', current: consumed.protein, target: targetValues.macros.protein, color: COLORS.primary, unit: 'g' },
-              { name: 'C', current: consumed.carbs, target: targetValues.macros.carbs, color: COLORS.info, unit: 'g' },
-              { name: 'F', current: consumed.fat, target: targetValues.macros.fat, color: COLORS.warning, unit: 'g' },
+              { name: 'Protein', current: consumed.protein, target: targetValues.macros.protein, color: COLORS.primary, unit: 'g' },
+              { name: 'Carbs', current: consumed.carbs, target: targetValues.macros.carbs, color: COLORS.info, unit: 'g' },
+              { name: 'Fat', current: consumed.fat, target: targetValues.macros.fat, color: COLORS.warning, unit: 'g' },
             ].map((macro, index) => (
               <View key={macro.name} style={styles.macroItem}>
                 <AnimatedProgressRing
                   progress={(macro.current / macro.target) * 100}
-                  size={60}
-                  strokeWidth={5}
+                  size={70}
+                  strokeWidth={6}
                   color={macro.color}
                   label={macro.name}
-                  value={`${Math.round(macro.current)}`}
-                  delay={200 + index * 80}
+                  value={`${Math.round(macro.current)}${macro.unit}`}
+                  delay={300 + index * 100}
                 />
                 <Text style={styles.macroRemaining}>
                   {Math.round(Math.max(0, macro.target - macro.current))}{macro.unit} left
@@ -339,21 +313,25 @@ export default function NutritionScreen() {
       </SlideIn>
 
       {/* Water Tracking */}
-      <SlideIn direction="bottom" delay={200}>
+      <SlideIn direction="bottom" delay={300}>
         <GlassCard style={styles.waterCard}>
           <View style={styles.waterHeader}>
             <View style={styles.waterInfo}>
-              <Ionicons name="water" size={20} color={COLORS.info} />
+              <Ionicons name="water" size={24} color={COLORS.info} />
               <Text style={styles.waterTitle}>Water</Text>
             </View>
-            <Text style={styles.waterAmount}>{waterIntake} / {waterGoal} ml</Text>
+            <Text style={styles.waterAmount}>{waterIntake} / 2500 ml</Text>
           </View>
           <View style={styles.waterProgress}>
-            <View style={[styles.waterProgressFill, { width: `${Math.min(100, (waterIntake / waterGoal) * 100)}%` }]} />
+            <View style={[styles.waterProgressFill, { width: `${Math.min(100, (waterIntake / 2500) * 100)}%` }]} />
           </View>
           <View style={styles.waterButtons}>
             {[250, 500, 750].map(amount => (
-              <TouchableOpacity key={amount} style={styles.waterButton} onPress={() => addWater(amount)}>
+              <TouchableOpacity
+                key={amount}
+                style={styles.waterButton}
+                onPress={() => addWater(amount)}
+              >
                 <Text style={styles.waterButtonText}>+{amount}ml</Text>
               </TouchableOpacity>
             ))}
@@ -362,7 +340,7 @@ export default function NutritionScreen() {
       </SlideIn>
 
       {/* Meals */}
-      <FadeIn delay={250}>
+      <FadeIn delay={400}>
         <Text style={styles.sectionTitle}>Meals</Text>
       </FadeIn>
 
@@ -386,22 +364,23 @@ export default function NutritionScreen() {
                     name={
                       mealType === 'breakfast' ? 'sunny-outline' :
                       mealType === 'lunch' ? 'partly-sunny-outline' :
-                      mealType === 'dinner' ? 'moon-outline' : 'cafe-outline'
+                      mealType === 'dinner' ? 'moon-outline' :
+                      'cafe-outline'
                     }
-                    size={20}
+                    size={24}
                     color={COLORS.primary}
                   />
                   <Text style={styles.mealName}>{mealType.charAt(0).toUpperCase() + mealType.slice(1)}</Text>
                 </View>
                 <View style={styles.mealRight}>
                   <Text style={styles.mealCalories}>{Math.round(mealCalories)} kcal</Text>
-                  <Ionicons name="add-circle" size={22} color={COLORS.primary} />
+                  <Ionicons name="add-circle" size={24} color={COLORS.primary} />
                 </View>
               </TouchableOpacity>
 
               {meals.length > 0 && (
                 <View style={styles.mealItems}>
-                  {meals.map((log) => (
+                  {meals.map((log, logIndex) => (
                     <View key={log.id} style={styles.foodItem}>
                       <View style={styles.foodInfo}>
                         <Text style={styles.foodName} numberOfLines={1}>{log.food.name}</Text>
@@ -439,7 +418,7 @@ export default function NutritionScreen() {
                           ]);
                         }}
                       >
-                        <Ionicons name="close-circle" size={18} color={COLORS.textTertiary} />
+                        <Ionicons name="close-circle" size={20} color={COLORS.textTertiary} />
                       </TouchableOpacity>
                     </View>
                   ))}
@@ -452,11 +431,13 @@ export default function NutritionScreen() {
     </>
   );
 
+  // Helper function to render nutrient groups
   const renderNutrientGroup = (keys: string[], startIndex: number) => {
     return keys.map((key, index) => {
       const nutrient = MICRONUTRIENT_RDA[key];
       if (!nutrient) return null;
 
+      // Calculate from actual food logs where data is available
       let current = 0;
       if (todaySummary?.meals) {
         const allLogs = [
@@ -468,9 +449,11 @@ export default function NutritionScreen() {
         allLogs.forEach(log => {
           const food = log.food as any;
           const multiplier = log.servings || 1;
+          // Use available food data - currently only fiber, sugar, sodium are tracked
           if (key === 'fiber' && food.fiber) current += food.fiber * multiplier;
           if (key === 'sugar' && food.sugar) current += food.sugar * multiplier;
           if (key === 'sodium' && food.sodium) current += food.sodium * multiplier;
+          // For other micronutrients, check if they exist in the micronutrients object
           if (food.micronutrients && food.micronutrients[key]) {
             current += food.micronutrients[key] * multiplier;
           }
@@ -485,9 +468,10 @@ export default function NutritionScreen() {
             <View style={styles.nutrientInfo}>
               <Text style={[styles.nutrientName, !hasData && styles.nutrientNameUnavailable]}>
                 {nutrient.name}
+                {!hasData && ' *'}
               </Text>
               <Text style={styles.nutrientValues}>
-                {hasData ? `${current >= 1 ? Math.round(current) : current.toFixed(1)} / ${nutrient.target} ${nutrient.unit}` : 'No data'}
+                {hasData ? `${current >= 1 ? Math.round(current) : current.toFixed(1)} / ${nutrient.target} ${nutrient.unit}` : 'Data unavailable'}
               </Text>
             </View>
             <View style={styles.nutrientBarContainer}>
@@ -521,6 +505,7 @@ export default function NutritionScreen() {
         </GlassCard>
       </SlideIn>
 
+      {/* Macros Section */}
       <FadeIn delay={150}>
         <Text style={styles.nutrientCategory}>Macronutrients</Text>
       </FadeIn>
@@ -528,7 +513,7 @@ export default function NutritionScreen() {
       {[
         { name: 'Calories', current: consumed.calories, target: targetValues.targetCalories, unit: 'kcal', color: COLORS.primary },
         { name: 'Protein', current: consumed.protein, target: targetValues.macros.protein, unit: 'g', color: COLORS.primary },
-        { name: 'Carbs', current: consumed.carbs, target: targetValues.macros.carbs, unit: 'g', color: COLORS.info },
+        { name: 'Carbohydrates', current: consumed.carbs, target: targetValues.macros.carbs, unit: 'g', color: COLORS.info },
         { name: 'Fat', current: consumed.fat, target: targetValues.macros.fat, unit: 'g', color: COLORS.warning },
       ].map((nutrient, index) => {
         const percentage = Math.min(100, (nutrient.current / nutrient.target) * 100);
@@ -544,7 +529,10 @@ export default function NutritionScreen() {
               <View style={styles.nutrientBarContainer}>
                 <View style={styles.nutrientBar}>
                   <Animated.View
-                    style={[styles.nutrientBarFill, { width: `${percentage}%`, backgroundColor: nutrient.color }]}
+                    style={[
+                      styles.nutrientBarFill,
+                      { width: `${percentage}%`, backgroundColor: nutrient.color },
+                    ]}
                   />
                 </View>
                 <Text style={[styles.nutrientPercentage, { color: nutrient.color }]}>
@@ -556,55 +544,76 @@ export default function NutritionScreen() {
         );
       })}
 
-      <FadeIn delay={250}>
-        <Text style={styles.nutrientCategory}>Key Micronutrients</Text>
+      {/* Micronutrients Sections */}
+      {/* Fiber & Sugars */}
+      <FadeIn delay={300}>
+        <Text style={styles.nutrientCategory}>Fiber & Sugars</Text>
       </FadeIn>
-      {renderNutrientGroup(['fiber', 'sugar', 'sodium', 'potassium', 'calcium', 'iron', 'vitaminC', 'vitaminD'], 4)}
+      {renderNutrientGroup(['fiber', 'sugar'], 4)}
+
+      {/* Electrolytes & Macrominerals */}
+      <FadeIn delay={350}>
+        <Text style={styles.nutrientCategory}>Electrolytes & Macrominerals</Text>
+      </FadeIn>
+      {renderNutrientGroup(['sodium', 'potassium', 'calcium', 'magnesium', 'phosphorus', 'chloride'], 6)}
+
+      {/* Trace Minerals */}
+      <FadeIn delay={400}>
+        <Text style={styles.nutrientCategory}>Trace Minerals</Text>
+      </FadeIn>
+      {renderNutrientGroup(['iron', 'zinc', 'copper', 'manganese', 'selenium', 'iodine', 'chromium', 'molybdenum'], 12)}
+
+      {/* Fat-Soluble Vitamins */}
+      <FadeIn delay={450}>
+        <Text style={styles.nutrientCategory}>Fat-Soluble Vitamins</Text>
+      </FadeIn>
+      {renderNutrientGroup(['vitaminA', 'vitaminD', 'vitaminE', 'vitaminK'], 20)}
+
+      {/* Water-Soluble Vitamins */}
+      <FadeIn delay={500}>
+        <Text style={styles.nutrientCategory}>Water-Soluble Vitamins (B Complex & C)</Text>
+      </FadeIn>
+      {renderNutrientGroup(['vitaminC', 'thiamin', 'riboflavin', 'niacin', 'pantothenicAcid', 'vitaminB6', 'biotin', 'folate', 'vitaminB12'], 24)}
+
+      {/* Essential Fatty Acids */}
+      <FadeIn delay={550}>
+        <Text style={styles.nutrientCategory}>Essential Fatty Acids</Text>
+      </FadeIn>
+      {renderNutrientGroup(['omega3', 'omega6'], 33)}
+
+      {/* Other Nutrients */}
+      <FadeIn delay={600}>
+        <Text style={styles.nutrientCategory}>Other Tracked Nutrients</Text>
+      </FadeIn>
+      {renderNutrientGroup(['choline', 'cholesterol', 'saturatedFat', 'transFat'], 35)}
+
+      <View style={{ marginTop: 16, padding: 12, backgroundColor: COLORS.cardBackgroundLight, borderRadius: 8 }}>
+        <Text style={{ fontSize: 11, color: COLORS.textSecondary, lineHeight: 16 }}>
+          * Most micronutrients are currently unavailable as they require detailed food database integration.
+          Basic nutrients (fiber, sugar, sodium) are tracked from food scanner data.
+        </Text>
+      </View>
     </>
   );
 
-  const renderTrendsTab = () => {
-    // Use real calorie history or fall back to placeholder showing only today's data
-    const historyData = calorieHistory?.history || [];
-    const hasRealData = historyData.length > 0 && historyData.some(d => d.calories > 0);
-
-    // If no history data, create placeholder with only today's calories visible
-    const chartData = hasRealData
-      ? historyData.map((d, i) => ({
-          calories: d.calories,
-          label: d.dayOfWeek,
-          isToday: i === historyData.length - 1,
-        }))
-      : Array(7).fill(null).map((_, i) => ({
-          calories: i === 6 ? consumed.calories : 0,
-          label: ['M', 'T', 'W', 'T', 'F', 'S', 'S'][i],
-          isToday: i === 6,
-        }));
-
-    const stats = calorieHistory?.stats || {
-      average: consumed.calories > 0 ? Math.round(consumed.calories) : 0,
-      target: targetValues.targetCalories,
-      adherence: 0,
-      daysTracked: consumed.calories > 0 ? 1 : 0,
-    };
-
-    const maxCal = Math.max(targetValues.targetCalories + 500, ...chartData.map(d => d.calories), 2000);
-
-    return (
+  const renderTrendsTab = () => (
     <>
       <SlideIn direction="bottom" delay={100}>
         <GlassCard style={styles.trendCard}>
           <Text style={styles.sectionTitle}>Calorie Trend</Text>
           <Text style={styles.trendSubtitle}>Last 7 days</Text>
           <View style={styles.trendChart}>
-            {chartData.map((day, i) => {
-              const height = day.calories > 0 ? (day.calories / maxCal) * 100 : 3;
+            {[1800, 2100, 1950, 2200, 1900, 2050, consumed.calories].map((cal, i) => {
+              const maxCal = 2500;
+              const height = (cal / maxCal) * 100;
               return (
                 <View key={i} style={styles.trendBarContainer}>
-                  <View style={[styles.trendBar, { height: `${Math.max(height, 3)}%`, opacity: day.calories > 0 ? 1 : 0.3 }]}>
-                    {day.isToday && day.calories > 0 && <View style={styles.currentDayIndicator} />}
+                  <View style={[styles.trendBar, { height: `${height}%` }]}>
+                    {i === 6 && <View style={styles.currentDayIndicator} />}
                   </View>
-                  <Text style={styles.trendLabel}>{day.label}</Text>
+                  <Text style={styles.trendLabel}>
+                    {['M', 'T', 'W', 'T', 'F', 'S', 'S'][i]}
+                  </Text>
                 </View>
               );
             })}
@@ -612,26 +621,17 @@ export default function NutritionScreen() {
           <View style={styles.trendStats}>
             <View style={styles.trendStat}>
               <Text style={styles.trendStatLabel}>Average</Text>
-              <Text style={styles.trendStatValue}>
-                {stats.average > 0 ? stats.average.toLocaleString() : '--'}
-              </Text>
+              <Text style={styles.trendStatValue}>2,000</Text>
             </View>
             <View style={styles.trendStat}>
               <Text style={styles.trendStatLabel}>Goal</Text>
-              <Text style={styles.trendStatValue}>{targetValues.targetCalories.toLocaleString()}</Text>
+              <Text style={styles.trendStatValue}>{targetValues.targetCalories}</Text>
             </View>
             <View style={styles.trendStat}>
               <Text style={styles.trendStatLabel}>Adherence</Text>
-              <Text style={[styles.trendStatValue, { color: stats.adherence >= 70 ? COLORS.success : stats.adherence >= 40 ? COLORS.warning : COLORS.textSecondary }]}>
-                {stats.daysTracked > 0 ? `${stats.adherence}%` : '--'}
-              </Text>
+              <Text style={[styles.trendStatValue, { color: COLORS.success }]}>85%</Text>
             </View>
           </View>
-          {!hasRealData && (
-            <Text style={styles.noHistoryHint}>
-              Track your meals daily to see trends
-            </Text>
-          )}
         </GlassCard>
       </SlideIn>
 
@@ -659,7 +659,7 @@ export default function NutritionScreen() {
               <View style={styles.trendIndicator}>
                 <Ionicons
                   name={weightTrend.trend === 'down' ? 'trending-down' : weightTrend.trend === 'up' ? 'trending-up' : 'remove'}
-                  size={22}
+                  size={24}
                   color={weightTrend.trend === 'down' ? COLORS.success : weightTrend.trend === 'up' ? COLORS.warning : COLORS.textSecondary}
                 />
                 <Text style={styles.trendText}>
@@ -675,8 +675,35 @@ export default function NutritionScreen() {
 
       <SlideIn direction="bottom" delay={300}>
         <GlassCard style={styles.trendCard}>
+          <Text style={styles.sectionTitle}>Macro Distribution</Text>
+          <View style={styles.macroDistribution}>
+            {[
+              { name: 'Protein', value: consumed.protein * 4, color: COLORS.primary },
+              { name: 'Carbs', value: consumed.carbs * 4, color: COLORS.info },
+              { name: 'Fat', value: consumed.fat * 9, color: COLORS.warning },
+            ].map((macro, index) => {
+              const total = consumed.protein * 4 + consumed.carbs * 4 + consumed.fat * 9;
+              const percentage = total > 0 ? (macro.value / total) * 100 : 0;
+              return (
+                <View key={macro.name} style={styles.macroDistItem}>
+                  <View style={[styles.macroDistColor, { backgroundColor: macro.color }]} />
+                  <Text style={styles.macroDistName}>{macro.name}</Text>
+                  <Text style={styles.macroDistPercent}>{Math.round(percentage)}%</Text>
+                </View>
+              );
+            })}
+          </View>
+        </GlassCard>
+      </SlideIn>
+    </>
+  );
+
+  const renderBiometricsTab = () => (
+    <>
+      <SlideIn direction="bottom" delay={100}>
+        <GlassCard style={styles.biometricCard}>
           <View style={styles.biometricHeader}>
-            <Ionicons name="scale-outline" size={20} color={COLORS.primary} />
+            <Ionicons name="scale-outline" size={24} color={COLORS.primary} />
             <Text style={styles.biometricTitle}>Log Weight</Text>
           </View>
           <View style={styles.weightInputContainer}>
@@ -685,144 +712,57 @@ export default function NutritionScreen() {
               placeholder="Enter weight"
               placeholderTextColor={COLORS.textTertiary}
               keyboardType="numeric"
-              value={weightInput}
-              onChangeText={setWeightInput}
+              onSubmitEditing={(e) => {
+                const weight = parseFloat(e.nativeEvent.text);
+                if (weight > 0) {
+                  trigger('success');
+                  logWeight(weight);
+                }
+              }}
             />
             <Text style={styles.weightUnit}>kg</Text>
-            <TouchableOpacity style={styles.logWeightButton} onPress={handleLogWeight}>
-              <Text style={styles.logWeightButtonText}>Log</Text>
-            </TouchableOpacity>
           </View>
         </GlassCard>
       </SlideIn>
-    </>
-    );
-  };
 
-  const renderGoalsTab = () => (
-    <>
-      {currentTargets && (
-        <>
-          <SlideIn direction="bottom" delay={100}>
-            <View style={styles.caloriesSection}>
-              <View style={styles.calorieGoalCard}>
-                <Text style={styles.goalValue}>{Math.round(currentTargets.bmr)}</Text>
-                <Text style={styles.goalLabel}>BMR</Text>
-                <Text style={styles.goalSubtext}>Basal Metabolic Rate</Text>
-              </View>
+      <FadeIn delay={200}>
+        <Text style={styles.sectionTitle}>Quick Add</Text>
+      </FadeIn>
 
-              <View style={styles.calorieGoalCard}>
-                <Text style={styles.goalValue}>{Math.round(currentTargets.tdee)}</Text>
-                <Text style={styles.goalLabel}>TDEE</Text>
-                <Text style={styles.goalSubtext}>Maintenance calories</Text>
-              </View>
-
-              <View style={[styles.calorieGoalCard, styles.targetCard]}>
-                <Text style={[styles.goalValue, styles.targetValue]}>
-                  {Math.round(currentTargets.targetCalories || 0)}
-                </Text>
-                <Text style={styles.goalLabel}>TARGET</Text>
-                <Text style={styles.goalSubtext}>Daily Goal</Text>
-              </View>
+      {[
+        { icon: 'heart-outline', title: 'Blood Pressure', value: '120/80 mmHg' },
+        { icon: 'water-outline', title: 'Blood Glucose', value: '95 mg/dL' },
+        { icon: 'pulse-outline', title: 'Heart Rate', value: '72 bpm' },
+        { icon: 'body-outline', title: 'Body Fat', value: '18%' },
+      ].map((metric, index) => (
+        <AnimatedListItem key={metric.title} index={index} enterFrom="right">
+          <AnimatedCard style={styles.biometricRow}>
+            <View style={styles.biometricInfo}>
+              <Ionicons name={metric.icon as any} size={24} color={COLORS.info} />
+              <Text style={styles.biometricName}>{metric.title}</Text>
             </View>
-          </SlideIn>
-
-          <SlideIn direction="bottom" delay={200}>
-            <GlassCard style={styles.macrosGoalCard}>
-              <Text style={styles.sectionTitle}>Daily Macros</Text>
-
-              {[
-                { name: 'Protein', value: currentTargets.macros.protein, color: COLORS.primary },
-                { name: 'Carbs', value: currentTargets.macros.carbs, color: COLORS.info },
-                { name: 'Fat', value: currentTargets.macros.fat, color: COLORS.warning },
-              ].map((macro) => (
-                <View key={macro.name} style={styles.macroGoalRow}>
-                  <View style={styles.macroGoalHeader}>
-                    <Text style={styles.macroGoalName}>{macro.name}</Text>
-                    <Text style={[styles.macroGoalAmount, { color: macro.color }]}>{Math.round(macro.value)}g</Text>
-                  </View>
-                  <View style={styles.macroGoalBar}>
-                    <View
-                      style={[
-                        styles.macroGoalBarFill,
-                        {
-                          width: `${Math.min((macro.value * (macro.name === 'Fat' ? 9 : 4) / currentTargets.targetCalories) * 100, 100)}%`,
-                          backgroundColor: macro.color,
-                        },
-                      ]}
-                    />
-                  </View>
-                  <Text style={styles.macroGoalCalories}>
-                    {Math.round(macro.value * (macro.name === 'Fat' ? 9 : 4))} kcal
-                  </Text>
-                </View>
-              ))}
-            </GlassCard>
-          </SlideIn>
-
-          <TouchableOpacity style={styles.formulasToggle} onPress={() => setShowFormulas(!showFormulas)}>
-            <Text style={styles.formulasToggleText}>
-              {showFormulas ? 'Hide' : 'Show'} Scientific Formulas
-            </Text>
-          </TouchableOpacity>
-
-          {showFormulas && currentTargets.explanation && (
-            <FadeIn delay={100}>
-              <View style={styles.formulasSection}>
-                <View style={styles.formulaCard}>
-                  <Text style={styles.formulaTitle}>BMR Formula</Text>
-                  <Text style={styles.formulaText}>{currentTargets.explanation.bmrFormula}</Text>
-                </View>
-                <View style={styles.formulaCard}>
-                  <Text style={styles.formulaTitle}>TDEE Calculation</Text>
-                  <Text style={styles.formulaText}>{currentTargets.explanation.tdeeCalculation}</Text>
-                </View>
-                <View style={styles.formulaCard}>
-                  <Text style={styles.formulaTitle}>Calorie Adjustment</Text>
-                  <Text style={styles.formulaText}>{currentTargets.explanation.calorieAdjustment}</Text>
-                </View>
-                <View style={styles.formulaCard}>
-                  <Text style={styles.formulaTitle}>Macro Rationale</Text>
-                  <Text style={styles.formulaText}>{currentTargets.explanation.macroRationale}</Text>
-                </View>
-              </View>
-            </FadeIn>
-          )}
-        </>
-      )}
+            <View style={styles.biometricValueContainer}>
+              <Text style={styles.biometricValue}>{metric.value}</Text>
+              <Ionicons name="chevron-forward" size={20} color={COLORS.textTertiary} />
+            </View>
+          </AnimatedCard>
+        </AnimatedListItem>
+      ))}
     </>
   );
-
-  if (isLoading && !todaySummary && !currentTargets) {
-    return (
-      <View style={styles.loadingContainer}>
-        <Skeleton width="100%" height={200} borderRadius={12} style={{ marginBottom: 14 }} />
-        <Skeleton width="100%" height={120} borderRadius={12} style={{ marginBottom: 14 }} />
-        <Skeleton width="100%" height={80} borderRadius={12} />
-      </View>
-    );
-  }
 
   return (
     <View style={styles.container}>
       <BlurHeader
-        title="Nutrition"
+        title="Advanced Tracking"
         scrollY={scrollY}
-        rightElement={
-          <View style={styles.headerButtons}>
-            <TouchableOpacity
-              style={styles.scanButton}
-              onPress={() => navigation.navigate('FoodScanner', { mealType: selectedMealType })}
-            >
-              <Ionicons name="camera" size={18} color="#fff" />
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.scanButtonOutline}
-              onPress={() => navigation.navigate('BarcodeScanner', { mealType: selectedMealType })}
-            >
-              <Ionicons name="barcode-outline" size={18} color={COLORS.primary} />
-            </TouchableOpacity>
-          </View>
+        leftElement={
+          <TouchableOpacity
+            style={styles.backButton}
+            onPress={() => navigation.goBack()}
+          >
+            <Ionicons name="chevron-back" size={24} color={COLORS.text} />
+          </TouchableOpacity>
         }
       />
 
@@ -832,7 +772,11 @@ export default function NutritionScreen() {
         onScroll={scrollHandler}
         scrollEventThrottle={16}
         refreshControl={
-          <RefreshControl refreshing={isRefreshing} onRefresh={onRefresh} tintColor={COLORS.primary} />
+          <RefreshControl
+            refreshing={isRefreshing}
+            onRefresh={onRefresh}
+            tintColor={COLORS.primary}
+          />
         }
       >
         {/* Tab Selector */}
@@ -847,7 +791,7 @@ export default function NutritionScreen() {
               { id: 'diary', label: 'Diary', icon: 'book-outline' },
               { id: 'nutrients', label: 'Nutrients', icon: 'nutrition-outline' },
               { id: 'trends', label: 'Trends', icon: 'trending-up-outline' },
-              { id: 'goals', label: 'Goals', icon: 'flag-outline' },
+              { id: 'biometrics', label: 'Biometrics', icon: 'pulse-outline' },
             ].map((tab) => (
               <TouchableOpacity
                 key={tab.id}
@@ -856,7 +800,7 @@ export default function NutritionScreen() {
               >
                 <Ionicons
                   name={tab.icon as any}
-                  size={16}
+                  size={18}
                   color={activeTab === tab.id ? '#fff' : COLORS.textSecondary}
                 />
                 <Text style={[styles.tabText, activeTab === tab.id && styles.tabTextActive]}>
@@ -868,12 +812,20 @@ export default function NutritionScreen() {
         </FadeIn>
 
         {/* Tab Content */}
-        {activeTab === 'diary' && renderDiaryTab()}
-        {activeTab === 'nutrients' && renderNutrientsTab()}
-        {activeTab === 'trends' && renderTrendsTab()}
-        {activeTab === 'goals' && renderGoalsTab()}
-
-        <View style={styles.bottomPadding} />
+        {isLoading ? (
+          <View style={styles.skeletonContainer}>
+            <Skeleton width="100%" height={220} borderRadius={16} style={{ marginBottom: 16 }} />
+            <Skeleton width="100%" height={140} borderRadius={16} style={{ marginBottom: 16 }} />
+            <Skeleton width="100%" height={100} borderRadius={16} />
+          </View>
+        ) : (
+          <>
+            {activeTab === 'diary' && renderDiaryTab()}
+            {activeTab === 'nutrients' && renderNutrientsTab()}
+            {activeTab === 'trends' && renderTrendsTab()}
+            {activeTab === 'biometrics' && renderBiometricsTab()}
+          </>
+        )}
       </Animated.ScrollView>
 
       {/* Add Food Modal */}
@@ -898,7 +850,7 @@ export default function NutritionScreen() {
           </View>
 
           <View style={styles.searchContainer}>
-            <Ionicons name="search" size={18} color={COLORS.textSecondary} />
+            <Ionicons name="search" size={20} color={COLORS.textSecondary} />
             <TextInput
               style={styles.searchInput}
               placeholder="Search foods..."
@@ -907,7 +859,7 @@ export default function NutritionScreen() {
               onChangeText={setSearchQuery}
               autoFocus
             />
-            {isSearching && <Ionicons name="hourglass-outline" size={18} color={COLORS.textSecondary} />}
+            {isSearching && <Ionicons name="hourglass-outline" size={20} color={COLORS.textSecondary} />}
           </View>
 
           {/* Recent Foods */}
@@ -991,31 +943,45 @@ export default function NutritionScreen() {
                 <View style={styles.servingsControl}>
                   <Text style={styles.servingsLabel}>Servings</Text>
                   <View style={styles.servingsButtons}>
-                    <TouchableOpacity style={styles.servingButton} onPress={() => setServings(Math.max(0.5, servings - 0.5))}>
-                      <Ionicons name="remove" size={22} color={COLORS.text} />
+                    <TouchableOpacity
+                      style={styles.servingButton}
+                      onPress={() => setServings(Math.max(0.5, servings - 0.5))}
+                    >
+                      <Ionicons name="remove" size={24} color={COLORS.text} />
                     </TouchableOpacity>
                     <Text style={styles.servingsValue}>{servings}</Text>
-                    <TouchableOpacity style={styles.servingButton} onPress={() => setServings(servings + 0.5)}>
-                      <Ionicons name="add" size={22} color={COLORS.text} />
+                    <TouchableOpacity
+                      style={styles.servingButton}
+                      onPress={() => setServings(servings + 0.5)}
+                    >
+                      <Ionicons name="add" size={24} color={COLORS.text} />
                     </TouchableOpacity>
                   </View>
                 </View>
 
                 <View style={styles.foodDetailNutrients}>
                   <View style={styles.foodDetailNutrient}>
-                    <Text style={styles.foodDetailNutrientValue}>{Math.round(selectedFood.calories * servings)}</Text>
+                    <Text style={styles.foodDetailNutrientValue}>
+                      {Math.round(selectedFood.calories * servings)}
+                    </Text>
                     <Text style={styles.foodDetailNutrientLabel}>Calories</Text>
                   </View>
                   <View style={[styles.foodDetailNutrient, { borderLeftWidth: 1, borderLeftColor: COLORS.border }]}>
-                    <Text style={[styles.foodDetailNutrientValue, { color: COLORS.primary }]}>{Math.round(selectedFood.protein * servings)}g</Text>
+                    <Text style={[styles.foodDetailNutrientValue, { color: COLORS.primary }]}>
+                      {Math.round(selectedFood.protein * servings)}g
+                    </Text>
                     <Text style={styles.foodDetailNutrientLabel}>Protein</Text>
                   </View>
                   <View style={[styles.foodDetailNutrient, { borderLeftWidth: 1, borderLeftColor: COLORS.border }]}>
-                    <Text style={[styles.foodDetailNutrientValue, { color: COLORS.info }]}>{Math.round(selectedFood.carbs * servings)}g</Text>
+                    <Text style={[styles.foodDetailNutrientValue, { color: COLORS.info }]}>
+                      {Math.round(selectedFood.carbs * servings)}g
+                    </Text>
                     <Text style={styles.foodDetailNutrientLabel}>Carbs</Text>
                   </View>
                   <View style={[styles.foodDetailNutrient, { borderLeftWidth: 1, borderLeftColor: COLORS.border }]}>
-                    <Text style={[styles.foodDetailNutrientValue, { color: COLORS.warning }]}>{Math.round(selectedFood.fat * servings)}g</Text>
+                    <Text style={[styles.foodDetailNutrientValue, { color: COLORS.warning }]}>
+                      {Math.round(selectedFood.fat * servings)}g
+                    </Text>
                     <Text style={styles.foodDetailNutrientLabel}>Fat</Text>
                   </View>
                 </View>
@@ -1042,65 +1008,40 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: COLORS.background,
   },
-  loadingContainer: {
-    flex: 1,
-    backgroundColor: COLORS.background,
-    padding: 16,
-    paddingTop: 120,
+  backButton: {
+    padding: 8,
   },
   scrollView: {
     flex: 1,
   },
   scrollContent: {
     paddingTop: 140,
-    paddingHorizontal: 16,
-    paddingBottom: 40,
-  },
-  // Header
-  headerButtons: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  scanButton: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: COLORS.primary,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  scanButtonOutline: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: `${COLORS.primary}20`,
-    justifyContent: 'center',
-    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingBottom: 100,
   },
   // Tabs
   tabScroll: {
-    marginBottom: 16,
-    marginHorizontal: -16,
+    marginBottom: 20,
+    marginHorizontal: -20,
   },
   tabContainer: {
-    paddingHorizontal: 16,
-    gap: 8,
+    paddingHorizontal: 20,
+    gap: 10,
   },
   tab: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
     backgroundColor: COLORS.cardBackground,
-    borderRadius: 16,
-    gap: 5,
+    borderRadius: 20,
+    gap: 6,
   },
   tabActive: {
     backgroundColor: COLORS.primary,
   },
   tabText: {
-    fontSize: 13,
+    fontSize: 14,
     fontWeight: '600',
     color: COLORS.textSecondary,
   },
@@ -1109,46 +1050,45 @@ const styles = StyleSheet.create({
   },
   // Calorie Card
   calorieCard: {
-    marginBottom: 12,
+    marginBottom: 16,
     alignItems: 'center',
-    padding: 14,
   },
   calorieHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
     width: '100%',
-    marginBottom: 12,
+    marginBottom: 16,
   },
   calorieTitle: {
-    fontSize: 16,
+    fontSize: 18,
     fontWeight: '600',
     color: COLORS.text,
   },
   dateText: {
-    fontSize: 12,
+    fontSize: 13,
     color: COLORS.textSecondary,
-    marginTop: 2,
+    marginTop: 4,
   },
   streakBadge: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: `${COLORS.warning}20`,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 10,
-    gap: 3,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+    gap: 4,
   },
   streakEmoji: {
-    fontSize: 12,
+    fontSize: 14,
   },
   streakText: {
-    fontSize: 12,
+    fontSize: 14,
     fontWeight: '700',
     color: COLORS.warning,
   },
   calorieRing: {
-    marginVertical: 12,
+    marginVertical: 16,
   },
   calorieBreakdown: {
     flexDirection: 'row',
@@ -1161,29 +1101,28 @@ const styles = StyleSheet.create({
   },
   calorieDivider: {
     width: 1,
-    height: 24,
+    height: 30,
     backgroundColor: COLORS.border,
   },
   calorieLabel: {
-    fontSize: 11,
+    fontSize: 12,
     color: COLORS.textSecondary,
-    marginBottom: 2,
+    marginBottom: 4,
   },
   calorieValue: {
-    fontSize: 15,
+    fontSize: 18,
     fontWeight: '600',
     color: COLORS.text,
   },
   // Macro Card
   macroCard: {
-    marginBottom: 12,
-    padding: 12,
+    marginBottom: 16,
   },
   sectionTitle: {
-    fontSize: 15,
+    fontSize: 18,
     fontWeight: '600',
     color: COLORS.text,
-    marginBottom: 12,
+    marginBottom: 16,
   },
   macroGrid: {
     flexDirection: 'row',
@@ -1193,67 +1132,65 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   macroRemaining: {
-    fontSize: 10,
+    fontSize: 11,
     color: COLORS.textTertiary,
-    marginTop: 4,
+    marginTop: 6,
   },
   // Water Card
   waterCard: {
-    marginBottom: 12,
-    padding: 12,
+    marginBottom: 16,
   },
   waterHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 10,
+    marginBottom: 12,
   },
   waterInfo: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    gap: 8,
   },
   waterTitle: {
-    fontSize: 14,
+    fontSize: 16,
     fontWeight: '600',
     color: COLORS.text,
   },
   waterAmount: {
-    fontSize: 12,
+    fontSize: 14,
     color: COLORS.textSecondary,
   },
   waterProgress: {
-    height: 6,
+    height: 8,
     backgroundColor: COLORS.cardBackgroundLight,
-    borderRadius: 3,
+    borderRadius: 4,
     overflow: 'hidden',
-    marginBottom: 10,
+    marginBottom: 12,
   },
   waterProgressFill: {
     height: '100%',
     backgroundColor: COLORS.info,
-    borderRadius: 3,
+    borderRadius: 4,
   },
   waterButtons: {
     flexDirection: 'row',
-    gap: 8,
+    gap: 10,
   },
   waterButton: {
     flex: 1,
     backgroundColor: COLORS.cardBackgroundLight,
-    paddingVertical: 8,
-    borderRadius: 6,
+    paddingVertical: 10,
+    borderRadius: 8,
     alignItems: 'center',
   },
   waterButtonText: {
-    fontSize: 12,
+    fontSize: 14,
     fontWeight: '600',
     color: COLORS.info,
   },
   // Meals
   mealCard: {
-    marginBottom: 10,
-    padding: 12,
+    marginBottom: 12,
   },
   mealHeader: {
     flexDirection: 'row',
@@ -1263,91 +1200,90 @@ const styles = StyleSheet.create({
   mealInfo: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
+    gap: 12,
   },
   mealName: {
-    fontSize: 14,
+    fontSize: 16,
     fontWeight: '600',
     color: COLORS.text,
   },
   mealRight: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
+    gap: 12,
   },
   mealCalories: {
-    fontSize: 13,
+    fontSize: 14,
     color: COLORS.textSecondary,
   },
   mealItems: {
-    marginTop: 10,
-    paddingTop: 10,
+    marginTop: 12,
+    paddingTop: 12,
     borderTopWidth: 1,
     borderTopColor: COLORS.border,
   },
   foodItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 6,
+    paddingVertical: 8,
   },
   foodInfo: {
     flex: 1,
   },
   foodName: {
-    fontSize: 13,
+    fontSize: 14,
     fontWeight: '500',
     color: COLORS.text,
-    marginBottom: 1,
+    marginBottom: 2,
   },
   foodServings: {
-    fontSize: 11,
+    fontSize: 12,
     color: COLORS.textTertiary,
   },
   foodNutrients: {
     alignItems: 'flex-end',
   },
   foodCalories: {
-    fontSize: 13,
+    fontSize: 14,
     fontWeight: '600',
     color: COLORS.text,
-    marginBottom: 1,
+    marginBottom: 2,
   },
   macroMini: {
     flexDirection: 'row',
-    gap: 6,
+    gap: 8,
   },
   macroMiniText: {
-    fontSize: 10,
+    fontSize: 11,
     fontWeight: '600',
   },
   deleteButton: {
-    marginLeft: 10,
-    padding: 3,
+    marginLeft: 12,
+    padding: 4,
   },
   // Nutrients Tab
   nutrientOverview: {
-    marginBottom: 12,
-    padding: 12,
+    marginBottom: 16,
   },
   nutrientSubtitle: {
-    fontSize: 12,
+    fontSize: 13,
     color: COLORS.textSecondary,
-    marginTop: -6,
+    marginTop: -8,
   },
   nutrientCategory: {
-    fontSize: 14,
+    fontSize: 16,
     fontWeight: '600',
     color: COLORS.textSecondary,
-    marginTop: 12,
-    marginBottom: 10,
+    marginTop: 16,
+    marginBottom: 12,
   },
   nutrientRow: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: COLORS.cardBackground,
-    padding: 12,
-    borderRadius: 10,
-    marginBottom: 6,
+    padding: 14,
+    borderRadius: 12,
+    marginBottom: 8,
   },
   nutrientRowUnavailable: {
     opacity: 0.6,
@@ -1356,57 +1292,56 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   nutrientName: {
-    fontSize: 13,
+    fontSize: 14,
     fontWeight: '500',
     color: COLORS.text,
-    marginBottom: 1,
+    marginBottom: 2,
   },
   nutrientNameUnavailable: {
     color: COLORS.textSecondary,
   },
   nutrientValues: {
-    fontSize: 11,
+    fontSize: 12,
     color: COLORS.textSecondary,
   },
   nutrientBarContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    gap: 8,
   },
   nutrientBar: {
-    width: 80,
-    height: 5,
+    width: 100,
+    height: 6,
     backgroundColor: COLORS.cardBackgroundLight,
-    borderRadius: 2.5,
+    borderRadius: 3,
     overflow: 'hidden',
   },
   nutrientBarFill: {
     height: '100%',
-    borderRadius: 2.5,
+    borderRadius: 3,
   },
   nutrientPercentage: {
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: '600',
-    width: 32,
+    width: 36,
     textAlign: 'right',
   },
   // Trends Tab
   trendCard: {
-    marginBottom: 12,
-    padding: 12,
+    marginBottom: 16,
   },
   trendSubtitle: {
-    fontSize: 12,
+    fontSize: 13,
     color: COLORS.textSecondary,
-    marginTop: -6,
-    marginBottom: 12,
+    marginTop: -8,
+    marginBottom: 16,
   },
   trendChart: {
     flexDirection: 'row',
     alignItems: 'flex-end',
-    height: 100,
-    gap: 6,
-    marginBottom: 12,
+    height: 120,
+    gap: 8,
+    marginBottom: 16,
   },
   trendBarContainer: {
     flex: 1,
@@ -1417,28 +1352,28 @@ const styles = StyleSheet.create({
   trendBar: {
     width: '100%',
     backgroundColor: COLORS.primary,
-    borderRadius: 3,
-    minHeight: 3,
+    borderRadius: 4,
+    minHeight: 4,
   },
   currentDayIndicator: {
     position: 'absolute',
-    top: -3,
+    top: -4,
     left: '50%',
-    marginLeft: -3,
-    width: 6,
-    height: 6,
-    borderRadius: 3,
+    marginLeft: -4,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
     backgroundColor: COLORS.success,
   },
   trendLabel: {
-    fontSize: 10,
+    fontSize: 11,
     color: COLORS.textTertiary,
-    marginTop: 4,
+    marginTop: 6,
   },
   trendStats: {
     flexDirection: 'row',
     justifyContent: 'space-around',
-    paddingTop: 12,
+    paddingTop: 16,
     borderTopWidth: 1,
     borderTopColor: COLORS.border,
   },
@@ -1446,30 +1381,30 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   trendStatLabel: {
-    fontSize: 11,
+    fontSize: 12,
     color: COLORS.textSecondary,
-    marginBottom: 2,
+    marginBottom: 4,
   },
   trendStatValue: {
-    fontSize: 16,
+    fontSize: 18,
     fontWeight: '600',
     color: COLORS.text,
   },
   weightStats: {
     flexDirection: 'row',
     justifyContent: 'space-around',
-    marginBottom: 12,
+    marginBottom: 16,
   },
   weightStat: {
     alignItems: 'center',
   },
   weightStatLabel: {
-    fontSize: 11,
+    fontSize: 12,
     color: COLORS.textSecondary,
-    marginBottom: 2,
+    marginBottom: 4,
   },
   weightStatValue: {
-    fontSize: 16,
+    fontSize: 18,
     fontWeight: '600',
     color: COLORS.text,
   },
@@ -1477,33 +1412,53 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 6,
+    gap: 8,
   },
   trendText: {
-    fontSize: 13,
+    fontSize: 14,
     color: COLORS.textSecondary,
   },
   noDataText: {
-    fontSize: 13,
+    fontSize: 14,
     color: COLORS.textTertiary,
     textAlign: 'center',
-    padding: 16,
+    padding: 20,
   },
-  noHistoryHint: {
-    fontSize: 12,
-    color: COLORS.textTertiary,
-    textAlign: 'center',
-    marginTop: 8,
-    fontStyle: 'italic',
+  macroDistribution: {
+    gap: 12,
+  },
+  macroDistItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  macroDistColor: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+  },
+  macroDistName: {
+    flex: 1,
+    fontSize: 14,
+    color: COLORS.text,
+  },
+  macroDistPercent: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: COLORS.textSecondary,
+  },
+  // Biometrics Tab
+  biometricCard: {
+    marginBottom: 16,
   },
   biometricHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-    marginBottom: 12,
+    gap: 12,
+    marginBottom: 16,
   },
   biometricTitle: {
-    fontSize: 15,
+    fontSize: 18,
     fontWeight: '600',
     color: COLORS.text,
   },
@@ -1514,136 +1469,43 @@ const styles = StyleSheet.create({
   weightInput: {
     flex: 1,
     backgroundColor: COLORS.cardBackgroundLight,
-    borderRadius: 10,
-    padding: 12,
-    fontSize: 16,
+    borderRadius: 12,
+    padding: 16,
+    fontSize: 18,
     color: COLORS.text,
   },
   weightUnit: {
-    fontSize: 14,
+    fontSize: 16,
     color: COLORS.textSecondary,
-    marginLeft: 10,
+    marginLeft: 12,
   },
-  logWeightButton: {
-    backgroundColor: COLORS.primary,
-    borderRadius: 10,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    marginLeft: 10,
-  },
-  logWeightButtonText: {
-    color: '#fff',
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  // Goals Tab
-  caloriesSection: {
-    gap: 10,
-    marginBottom: 12,
-  },
-  calorieGoalCard: {
-    backgroundColor: COLORS.cardBackground,
-    padding: 14,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-  },
-  targetCard: {
-    borderColor: COLORS.primary,
-    borderWidth: 2,
-  },
-  goalValue: {
-    fontSize: 28,
-    fontWeight: 'bold',
-    color: COLORS.text,
-    marginBottom: 2,
-  },
-  targetValue: {
-    color: COLORS.primary,
-  },
-  goalLabel: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: COLORS.textSecondary,
-    marginBottom: 1,
-  },
-  goalSubtext: {
-    fontSize: 11,
-    color: COLORS.textTertiary,
-  },
-  macrosGoalCard: {
-    marginBottom: 12,
-    padding: 12,
-  },
-  macroGoalRow: {
-    marginBottom: 12,
-  },
-  macroGoalHeader: {
+  biometricRow: {
     flexDirection: 'row',
+    alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 6,
+    marginBottom: 10,
   },
-  macroGoalName: {
-    fontSize: 14,
-    fontWeight: '600',
+  biometricInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  biometricName: {
+    fontSize: 16,
     color: COLORS.text,
   },
-  macroGoalAmount: {
-    fontSize: 14,
-    fontWeight: 'bold',
-  },
-  macroGoalBar: {
-    height: 5,
-    backgroundColor: COLORS.cardBackgroundLight,
-    borderRadius: 2.5,
-    overflow: 'hidden',
-    marginBottom: 4,
-  },
-  macroGoalBarFill: {
-    height: '100%',
-  },
-  macroGoalCalories: {
-    fontSize: 11,
-    color: COLORS.textSecondary,
-  },
-  formulasToggle: {
-    padding: 14,
-    backgroundColor: COLORS.cardBackground,
-    borderRadius: 10,
+  biometricValueContainer: {
+    flexDirection: 'row',
     alignItems: 'center',
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    marginBottom: 12,
-  },
-  formulasToggleText: {
-    color: COLORS.primary,
-    fontSize: 13,
-    fontWeight: '600',
-  },
-  formulasSection: {
     gap: 8,
   },
-  formulaCard: {
-    backgroundColor: COLORS.cardBackground,
-    padding: 12,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-  },
-  formulaTitle: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: COLORS.primary,
-    marginBottom: 4,
-  },
-  formulaText: {
-    fontSize: 11,
+  biometricValue: {
+    fontSize: 14,
     color: COLORS.textSecondary,
-    fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
-    lineHeight: 16,
   },
-  bottomPadding: {
-    height: 80,
+  // Skeleton
+  skeletonContainer: {
+    marginTop: 10,
   },
   // Modal
   modalContainer: {
@@ -1654,13 +1516,13 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    padding: 16,
-    paddingTop: 54,
+    padding: 20,
+    paddingTop: 60,
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: COLORS.border,
   },
   modalTitle: {
-    fontSize: 18,
+    fontSize: 20,
     fontWeight: 'bold',
     color: COLORS.text,
   },
@@ -1668,133 +1530,131 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: COLORS.cardBackground,
-    margin: 16,
-    paddingHorizontal: 14,
-    borderRadius: 10,
-    gap: 10,
+    margin: 20,
+    paddingHorizontal: 16,
+    borderRadius: 12,
+    gap: 12,
   },
   searchInput: {
     flex: 1,
-    paddingVertical: 12,
-    fontSize: 15,
+    paddingVertical: 14,
+    fontSize: 16,
     color: COLORS.text,
   },
   recentSection: {
-    paddingHorizontal: 16,
-    marginBottom: 12,
+    paddingHorizontal: 20,
+    marginBottom: 16,
   },
   recentTitle: {
-    fontSize: 13,
+    fontSize: 14,
     fontWeight: '600',
     color: COLORS.textSecondary,
-    marginBottom: 8,
+    marginBottom: 10,
   },
   recentChip: {
     backgroundColor: COLORS.cardBackground,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 10,
-    marginRight: 8,
-    maxWidth: 120,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 12,
+    marginRight: 10,
+    maxWidth: 140,
   },
   recentChipText: {
-    fontSize: 13,
+    fontSize: 14,
     fontWeight: '500',
     color: COLORS.text,
-    marginBottom: 1,
+    marginBottom: 2,
   },
   recentChipCalories: {
-    fontSize: 11,
+    fontSize: 12,
     color: COLORS.textTertiary,
   },
   foodList: {
     flex: 1,
-    paddingHorizontal: 16,
+    paddingHorizontal: 20,
   },
   foodSearchCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 8,
-    padding: 12,
+    marginBottom: 10,
   },
   foodSearchInfo: {
     flex: 1,
   },
   foodSearchName: {
-    fontSize: 14,
+    fontSize: 15,
     fontWeight: '500',
     color: COLORS.text,
-    marginBottom: 1,
+    marginBottom: 2,
   },
   foodSearchServing: {
-    fontSize: 11,
+    fontSize: 12,
     color: COLORS.textTertiary,
   },
   foodSearchNutrients: {
     alignItems: 'flex-end',
   },
   foodSearchCalories: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: COLORS.text,
-    marginBottom: 1,
-  },
-  foodSearchMacros: {
-    flexDirection: 'row',
-    gap: 6,
-  },
-  foodSearchMacro: {
-    fontSize: 10,
-    fontWeight: '600',
-  },
-  // Food Detail Modal
-  foodDetailContent: {
-    padding: 16,
-  },
-  foodDetailCard: {
-    marginBottom: 20,
-    padding: 14,
-  },
-  foodDetailName: {
-    fontSize: 18,
+    fontSize: 15,
     fontWeight: '600',
     color: COLORS.text,
     marginBottom: 2,
   },
+  foodSearchMacros: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  foodSearchMacro: {
+    fontSize: 11,
+    fontWeight: '600',
+  },
+  // Food Detail Modal
+  foodDetailContent: {
+    padding: 20,
+  },
+  foodDetailCard: {
+    marginBottom: 24,
+  },
+  foodDetailName: {
+    fontSize: 20,
+    fontWeight: '600',
+    color: COLORS.text,
+    marginBottom: 4,
+  },
   foodDetailServing: {
-    fontSize: 13,
+    fontSize: 14,
     color: COLORS.textSecondary,
-    marginBottom: 16,
+    marginBottom: 20,
   },
   servingsControl: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 20,
+    marginBottom: 24,
   },
   servingsLabel: {
-    fontSize: 14,
+    fontSize: 16,
     fontWeight: '600',
     color: COLORS.text,
   },
   servingsButtons: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 14,
+    gap: 16,
   },
   servingButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     backgroundColor: COLORS.cardBackgroundLight,
     justifyContent: 'center',
     alignItems: 'center',
   },
   servingsValue: {
-    fontSize: 22,
+    fontSize: 24,
     fontWeight: '700',
     color: COLORS.text,
-    minWidth: 44,
+    minWidth: 50,
     textAlign: 'center',
   },
   foodDetailNutrients: {
@@ -1803,16 +1663,16 @@ const styles = StyleSheet.create({
   foodDetailNutrient: {
     flex: 1,
     alignItems: 'center',
-    paddingVertical: 10,
+    paddingVertical: 12,
   },
   foodDetailNutrientValue: {
-    fontSize: 20,
+    fontSize: 22,
     fontWeight: '700',
     color: COLORS.text,
-    marginBottom: 2,
+    marginBottom: 4,
   },
   foodDetailNutrientLabel: {
-    fontSize: 11,
+    fontSize: 12,
     color: COLORS.textSecondary,
   },
   addFoodButton: {
