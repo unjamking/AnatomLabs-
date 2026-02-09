@@ -1,0 +1,12 @@
+{
+  "name": "anatomlabsplus",
+  "private": true,
+  "workspaces": [
+    "backend",
+    "mobile"
+  ],
+  "scripts": {
+    "dev:backend": "npm run dev --workspace=backend",
+    "dev:mobile": "npm start --workspace=mobile"
+  }
+}
